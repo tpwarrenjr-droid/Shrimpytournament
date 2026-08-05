@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tournament Board</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#06231B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tournament">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --deep:#06231B; --board:#0C3A2D; --edge:#1B5C46;
+  --brass:#D4A62A; --chalk:#F1EEE2; --mute:#7FA394; --red:#C0392B;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{
+  background:radial-gradient(120% 80% at 50% 0%,#0E4433 0%,var(--deep) 62%) var(--deep);
+  color:var(--chalk);font-family:'Archivo',system-ui,sans-serif;
+  padding:calc(20px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+          calc(40px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  -webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;
+}
+.wrap{max-width:760px;margin:0 auto}
+
+/* masthead */
+.eyebrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--mute)}
+.eyebrow .dot{width:3px;height:3px;border-radius:50%;background:var(--brass)}
+#title{width:100%;background:transparent;border:0;padding:6px 0 2px;color:var(--chalk);
+  font-family:'Oswald',sans-serif;font-weight:600;text-transform:uppercase;
+  font-size:clamp(1.9rem,8.5vw,3.2rem);line-height:1.02}
+#title:focus{outline:none;color:var(--brass)}
+.brass-rule{height:2px;margin:10px 0 20px;background:linear-gradient(90deg,var(--brass),rgba(212,166,42,.15))}
+
+/* tabs */
+.tabs{display:flex;gap:2px;background:rgba(0,0,0,.25);padding:3px;border-radius:2px;margin-bottom:20px}
+.tab{flex:1;border:0;background:transparent;color:var(--mute);padding:11px 4px;cursor:pointer;
+  font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.14em;text-transform:uppercase;border-radius:1px}
+.tab:hover{color:var(--chalk)}
+.tab.on{background:var(--board);color:var(--brass);box-shadow:inset 0 1px 0 var(--edge)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+
+.stack{display:flex;flex-direction:column;gap:12px}
+
+/* leaderboard slats */
+.slat{background:linear-gradient(180deg,var(--board),#093025);border-top:1px solid var(--edge);
+  border-bottom:1px solid rgba(0,0,0,.4);border-radius:2px;padding:14px;box-shadow:0 2px 0 rgba(0,0,0,.3)}
+.slat.lead{box-shadow:0 2px 0 rgba(0,0,0,.3),inset 3px 0 0 var(--brass)}
+.slat-top{display:flex;align-items:center;gap:12px}
+.pos{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--brass);min-width:26px}
+.slat-name{flex:1;margin:0;font-family:'Oswald',sans-serif;font-weight:500;font-size:1.15rem;
+  text-transform:uppercase;letter-spacing:.045em;line-height:1.1;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plates{display:inline-flex;gap:3px;align-items:flex-end}
+.plate{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:40px;padding:0 4px;
+  background:linear-gradient(180deg,#E8BE41,#B98D18);color:#1A1206;border-radius:1px;
+  font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:22px;
+  box-shadow:inset 0 -2px 0 rgba(0,0,0,.25),0 1px 2px rgba(0,0,0,.4);animation:hang .28s cubic-bezier(.2,.8,.3,1)}
+.plate.dot{background:none;box-shadow:none;color:var(--brass);min-width:6px;align-items:flex-end}
+@keyframes hang{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+.break{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.chip{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;
+  background:rgba(0,0,0,.28);border:1px solid rgba(27,92,70,.7);padding:4px 7px;border-radius:1px}
+.chip b{color:var(--mute);font-weight:500;text-transform:uppercase;margin-right:5px}
+.chip em{color:var(--mute);font-style:normal}
+.roster-line{margin-top:9px;font-size:12px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note{font-size:12px;color:var(--mute);margin:4px 2px 0;line-height:1.5}
+
+/* panels */
+.panel{background:rgba(0,0,0,.2);border:1px solid rgba(27,92,70,.55);border-radius:2px;padding:16px 14px}
+.panel-h{margin:0 0 4px;font-family:'Oswald',sans-serif;font-weight:500;font-size:15px;
+  text-transform:uppercase;letter-spacing:.1em;color:var(--brass)}
+.panel-sub{margin:0 0 14px;font-size:12.5px;color:var(--mute);line-height:1.5}
+
+/* golf */
+.score-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(27,92,70,.4)}
+.score-row:last-child{border-bottom:0}
+.score-team{flex:1;font-family:'Oswald',sans-serif;font-size:14px;text-transform:uppercase;
+  letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score-input{width:72px;text-align:center;background:rgba(0,0,0,.35);color:var(--chalk);
+  border:1px solid var(--edge);border-bottom:2px solid var(--brass);border-radius:1px;
+  font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:600;padding:7px 4px}
+.score-input:focus{outline:none;background:rgba(0,0,0,.55)}
+.score-pts{width:62px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brass)}
+.pts-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.pts-cell{display:flex;flex-direction:column;gap:5px}
+.pts-cell span{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--mute);text-align:center}
+.pts-cell input{width:100%;text-align:center;background:rgba(0,0,0,.35);color:var(--chalk);
+  border:1px solid var(--edge);border-radius:1px;padding:8px 2px;
+  font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600}
+.pts-cell input:focus{outline:none;border-color:var(--brass)}
+
+/* games */
+.gchips{display:flex;gap:6px;flex-wrap:wrap}
+.gchip{background:rgba(0,0,0,.25);border:1px solid rgba(27,92,70,.7);color:var(--mute);
+  padding:8px 13px;border-radius:1px;cursor:pointer;
+  font-family:'Oswald',sans-serif;font-size:12.5px;letter-spacing:.09em;text-transform:uppercase}
+.gchip.on{background:var(--board);border-color:var(--brass);color:var(--brass)}
+.game-head{display:flex;gap:8px;align-items:center;margin-bottom:4px}
+.game-name{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px solid var(--edge);
+  color:var(--chalk);font-family:'Oswald',sans-serif;font-size:19px;text-transform:uppercase;
+  letter-spacing:.06em;padding:2px 0 5px}
+.game-name:focus{outline:none;border-color:var(--brass)}
+.match{display:flex;gap:6px;margin-bottom:6px}
+.side{flex:1;min-width:0;background:rgba(0,0,0,.28);border:1px solid rgba(27,92,70,.7);color:var(--chalk);
+  padding:12px 8px;border-radius:1px;cursor:pointer;font-family:'Oswald',sans-serif;font-size:13px;
+  letter-spacing:.04em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side:hover{border-color:var(--brass)}
+.side.win{background:linear-gradient(180deg,#E8BE41,#B98D18);color:#1A1206;border-color:#B98D18;font-weight:500}
+.side.lose{opacity:.42}
+.vs{display:flex;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mute);letter-spacing:.1em}
+.wins-panel{margin-top:18px;border-top:1px solid rgba(27,92,70,.5);padding-top:14px}
+.wins-h{margin:0 0 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--mute);font-weight:500}
+.wins-row{display:flex;align-items:center;gap:10px;padding:6px 0}
+.wins-name{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wins-num{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mute);width:34px;text-align:right}
+.tally{display:inline-flex;gap:4px;height:16px}
+.tally i{display:block;width:2px;height:16px;background:var(--brass);transform:skewX(-8deg)}
+.tally.empty{color:var(--edge);font-size:12px}
+.add-row{display:flex;gap:8px}
+.text-input{flex:1;min-width:0;background:rgba(0,0,0,.35);border:1px solid var(--edge);border-radius:1px;
+  color:var(--chalk);padding:11px 10px;font-family:'Archivo',sans-serif;font-size:14px}
+.text-input:focus{outline:none;border-color:var(--brass)}
+.solid{background:var(--brass);border:0;color:#1A1206;padding:11px 18px;border-radius:1px;cursor:pointer;
+  font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+.ghost{background:transparent;border:1px solid var(--edge);color:var(--mute);padding:9px 14px;
+  border-radius:1px;cursor:pointer;font-family:'Oswald',sans-serif;font-size:12px;
+  letter-spacing:.1em;text-transform:uppercase}
+.ghost:hover{color:var(--chalk);border-color:var(--mute)}
+.ghost.danger:hover{color:var(--red);border-color:var(--red)}
+
+/* teams */
+.team-name{width:100%;background:transparent;border:0;border-bottom:1px solid var(--edge);color:var(--brass);
+  font-family:'Oswald',sans-serif;font-size:18px;text-transform:uppercase;letter-spacing:.07em;
+  padding:0 0 8px;margin-bottom:12px}
+.team-name:focus{outline:none;border-color:var(--brass)}
+.roster{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.player-input{background:rgba(0,0,0,.3);border:1px solid rgba(27,92,70,.6);border-radius:1px;
+  color:var(--chalk);padding:10px;font-family:'Archivo',sans-serif;font-size:13.5px;min-width:0}
+.player-input:focus{outline:none;border-color:var(--brass)}
+
+/* draw */
+.pool-area{width:100%;min-height:150px;resize:vertical;background:rgba(0,0,0,.35);
+  border:1px solid var(--edge);border-radius:1px;color:var(--chalk);padding:11px;
+  font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.7}
+.pool-area:focus{outline:none;border-color:var(--brass)}
+.pool-bar{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mute);letter-spacing:.08em;margin-right:auto}
+.count.full{color:var(--brass)}
+
+.ghost.armed,.solid.armed{background:var(--red);border-color:var(--red);color:#fff}
+.pool-msg{width:100%;margin-top:9px;font-family:'IBM Plex Mono',monospace;font-size:11px;
+  letter-spacing:.06em;color:var(--brass);min-height:14px}
+
+.share-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 18px}
+.share-msg{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;color:var(--brass);flex:1;min-width:0}
+.share-url{width:100%;margin-top:8px;background:rgba(0,0,0,.35);border:1px solid var(--edge);
+  border-radius:1px;color:var(--chalk);padding:9px;font-family:'IBM Plex Mono',monospace;font-size:12px}
+
+.live{display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(27,92,70,.7);
+  border-radius:1px;padding:4px 8px;cursor:pointer;color:var(--mute);
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+.live:hover{border-color:var(--brass);color:var(--chalk)}
+.live i{width:6px;height:6px;border-radius:50%;background:var(--brass);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+.foot{display:flex;align-items:center;gap:10px;margin-top:26px;padding-top:12px;
+  border-top:1px solid rgba(27,92,70,.4);font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.08em;color:var(--mute)}
+#saved{opacity:0;color:var(--brass);transition:opacity .3s;text-transform:uppercase;letter-spacing:.2em}
+#saved.on{opacity:1}
+
+@media(max-width:420px){
+  .pts-grid{grid-template-columns:repeat(3,1fr)}
+  .plate{min-width:26px;height:36px;font-size:19px}
+  .side{font-size:12px;padding:11px 6px}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">
+      <span>20 players</span><span class="dot"></span>
+      <span>5 teams of 4</span><span class="dot"></span>
+      <span id="eventCount">4 events</span>
+    </div>
+    <input id="title" aria-label="Tournament name">
+    <div class="brass-rule"></div>
+  </header>
+
+  <div class="share-row">
+    <button class="solid" id="share">Copy share link</button>
+    <span class="share-msg" id="shareMsg"></span>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab on" data-tab="board" role="tab">Board</button>
+    <button class="tab" data-tab="golf" role="tab">Golf</button>
+    <button class="tab" data-tab="games" role="tab">Games</button>
+    <button class="tab" data-tab="teams" role="tab">Teams</button>
+  </nav>
+
+  <main id="main"><div class="note">Setting the board…</div></main>
+
+  <footer class="foot">
+    <span id="saved">Saved</span>
+    <button class="live" id="live" title="Check for updates now">
+      <i></i><span id="liveTime">live</span>
+    </button>
+    <span id="footNote">Everyone with the link sees and edits the same board.</span>
+  </footer>
+</div>
+
+<script>
+/* ---------------- state ---------------- */
+const IDS = ["t1","t2","t3","t4","t5"];
+
+const MATCHUPS = (() => {
+  const o = [];
+  for (let i=0;i<IDS.length;i++) for (let j=i+1;j<IDS.length;j++) o.push({key:IDS[i]+"|"+IDS[j], a:IDS[i], b:IDS[j]});
+  return o;
+})();
+
+function blank(){
+  return {
+    title: "The Scramble & Sauce Classic",
+    teams: IDS.map((id,i)=>({id, name:"Team "+(i+1), players:["","","",""]})),
+    golfScores: {t1:"",t2:"",t3:"",t4:"",t5:""},
+    golfPoints: [4,3,2,1,0],
+    pool: "",
+    games: [
+      {id:"g1", name:"Beer Dye", results:{}},
+      {id:"g2", name:"Beer Pong", results:{}},
+      {id:"g3", name:"Flip Cup", results:{}}
+    ]
+  };
+}
+
+let S = blank();
+let tab = "board";
+let activeGame = "g1";
+let lastEdit = 0, saveTimer = null;
+
+/* ---------------- scoring ---------------- */
+function golfPts(){
+  const p = {}; IDS.forEach(id => p[id]=0);
+  const scored = S.teams
+    .map(t => ({id:t.id, score: parseFloat(S.golfScores[t.id])}))
+    .filter(t => !isNaN(t.score))
+    .sort((a,b) => a.score - b.score);
+  let slot = 0, i = 0;
+  while (i < scored.length){
+    let j = i;
+    while (j+1 < scored.length && scored[j+1].score === scored[i].score) j++;
+    const n = j-i+1;
+    let sum = 0;
+    for (let k=0;k<n;k++) sum += (S.golfPoints[slot+k] ?? 0);
+    for (let k=i;k<=j;k++) p[scored[k].id] = sum/n;
+    slot += n; i = j+1;
+  }
+  return p;
+}
+function winsOf(game){
+  const w = {}; IDS.forEach(id => w[id]=0);
+  Object.values(game.results||{}).forEach(x => { if (w[x] !== undefined) w[x]++; });
+  return w;
+}
+function standings(){
+  const g = golfPts();
+  const per = S.games.map(x => ({game:x, wins:winsOf(x)}));
+  const rows = S.teams.map(t => {
+    const gw = per.map(p => ({id:p.game.id, name:p.game.name, wins:p.wins[t.id]}));
+    const wt = gw.reduce((s,x) => s+x.wins, 0);
+    const raw = parseFloat(S.golfScores[t.id]);
+    return {team:t, golf:g[t.id], score:isNaN(raw)?null:raw, gw, wt, total:g[t.id]+wt};
+  });
+  rows.sort((a,b) => b.total-a.total || b.golf-a.golf || a.team.name.localeCompare(b.team.name));
+  let pos = 0;
+  rows.forEach((r,i) => {
+    if (i===0 || r.total !== rows[i-1].total) pos = i+1;
+    r.pos = pos;
+    r.tied = rows.some((o,k) => k!==i && o.total===r.total);
+  });
+  return rows;
+}
+const fmt = n => Number.isInteger(n) ? String(n) : n.toFixed(1);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const teamName = id => (S.teams.find(t=>t.id===id)||{}).name || id;
+
+/* ---------------- storage ----------------
+   No setup required. The first time this page opens it creates a shared
+   board and puts its ID in the address bar. Share that link and every
+   device reads and writes the same scores.
+
+   Optional: paste a Firebase Realtime Database URL into DB_URL below and
+   the page uses that instead. See README.md.                          */
+
+const DB_URL = "";
+const STORE  = "https://jsonblob.com/api/jsonBlob";
+const KEY    = "tourney-board-v3";
+const IDKEY  = "tourney-board-id";
+
+/* The link carries the board ID. When the app is launched from the home
+   screen the query string is gone, so fall back to the last one used. */
+let boardId = new URLSearchParams(location.search).get("board")
+           || localStorage.getItem(IDKEY)
+           || "";
+let SHARED  = false;
+
+function setBoardId(id){
+  boardId = id;
+  try { localStorage.setItem(IDKEY, id); } catch(e){}
+  history.replaceState({}, "", location.pathname + "?board=" + id);
+}
+
+function endpoint(){
+  if (DB_URL)  return DB_URL.replace(/\/+$/,"") + "/board.json";
+  if (boardId) return STORE + "/" + boardId;
+  return null;
+}
+
+/* Remote stores can drop empty objects and nulls, so rebuild anything missing. */
+function normalize(x){
+  if (!x || typeof x !== "object") return null;
+  const b = blank();
+  const out = {
+    title: typeof x.title === "string" ? x.title : b.title,
+    pool: typeof x.pool === "string" ? x.pool : "",
+    golfPoints: Array.isArray(x.golfPoints) ? x.golfPoints.map(n => Number(n)||0) : b.golfPoints,
+    golfScores: Object.assign({t1:"",t2:"",t3:"",t4:"",t5:""}, x.golfScores || {}),
+    teams: IDS.map((id,i) => {
+      const t = (Array.isArray(x.teams) ? x.teams[i] : null) || {};
+      const p = Array.isArray(t.players) ? t.players.slice() : [];
+      while (p.length < 4) p.push("");
+      return {id, name: t.name || ("Team "+(i+1)), players: p.map(v => v == null ? "" : String(v))};
+    }),
+    games: (Array.isArray(x.games) ? x.games : b.games).map((g,i) => ({
+      id: g.id || ("g"+(i+1)),
+      name: g.name || ("Game "+(i+1)),
+      results: g.results || {}
+    })),
+    _t: x._t || 0
+  };
+  if (!out.games.length) out.games = b.games;
+  return out;
+}
+
+async function pull(){
+  const url = endpoint();
+  try {
+    if (!url){
+      const raw = localStorage.getItem(KEY);
+      return raw ? normalize(JSON.parse(raw)) : null;
+    }
+    const r = await fetch(url + (DB_URL ? "?t=" + Date.now() : ""), {
+      cache: "no-store",
+      headers: {"Accept":"application/json"}
+    });
+    if (!r.ok) throw new Error(r.status);
+    return normalize(await r.json());
+  } catch(e){ return null; }
+}
+
+async function push(state){
+  const url = endpoint();
+  if (!url){
+    localStorage.setItem(KEY, JSON.stringify(state));
+    return;
+  }
+  const r = await fetch(url, {
+    method: "PUT",
+    headers: {"Content-Type":"application/json","Accept":"application/json"},
+    body: JSON.stringify(state)
+  });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+}
+
+/* Creates a new shared board and returns its ID. */
+async function createBoard(state){
+  const r = await fetch(STORE, {
+    method: "POST",
+    headers: {"Content-Type":"application/json","Accept":"application/json"},
+    body: JSON.stringify(state)
+  });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const loc = r.headers.get("Location") || r.headers.get("location") || "";
+  const id = loc.split("/").filter(Boolean).pop();
+  if (!id) throw new Error("no board id returned");
+  return id;
+}
+
+function touch(){
+  lastEdit = Date.now();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      S._t = Date.now();
+      await push(S);
+      localStorage.setItem(KEY, JSON.stringify(S));
+      const el = document.getElementById("saved");
+      el.classList.add("on"); setTimeout(()=>el.classList.remove("on"), 1400);
+      document.getElementById("footNote").textContent = SHARED
+        ? "Everyone with this link sees and edits the same board."
+        : "Saved on this device only — reload to try reconnecting.";
+    } catch(e){
+      document.getElementById("footNote").textContent = "Not saving right now — check the connection.";
+    }
+  }, 500);
+}
+
+/* ---------------- render ---------------- */
+function render(){
+  document.getElementById("title").value = S.title;
+  document.getElementById("eventCount").textContent = (S.games.length+1) + " events";
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  const m = document.getElementById("main");
+  if (tab === "board") m.innerHTML = board();
+  else if (tab === "golf") m.innerHTML = golf();
+  else if (tab === "games") m.innerHTML = games();
+  else m.innerHTML = teams();
+  wire();
+}
+
+function plates(v){
+  return '<span class="plates">' + String(v).split("").map(c =>
+    c === "." ? '<span class="plate dot">.</span>' : '<span class="plate">'+c+'</span>'
+  ).join("") + '</span>';
+}
+function tally(n){
+  if (!n) return '<span class="tally empty">—</span>';
+  return '<span class="tally">' + "<i></i>".repeat(n) + '</span>';
+}
+
+function board(){
+  const rows = standings();
+  return '<div class="stack">' + rows.map(r => `
+    <article class="slat ${r.pos===1 && r.total>0 ? "lead" : ""}">
+      <div class="slat-top">
+        <span class="pos">${r.total>0 ? (r.tied ? "T"+r.pos : r.pos) : "–"}</span>
+        <h2 class="slat-name">${esc(r.team.name)}</h2>
+        ${plates(fmt(r.total))}
+      </div>
+      <div class="break">
+        <span class="chip"><b>Golf</b>${fmt(r.golf)}${r.score!==null ? ' <em>('+r.score+')</em>' : ""}</span>
+        ${r.gw.map(g => `<span class="chip"><b>${esc(g.name)}</b>${g.wins}</span>`).join("")}
+      </div>
+      <div class="roster-line">${esc(r.team.players.filter(Boolean).join(" · ")) || "No players yet"}</div>
+    </article>`).join("") +
+    '<p class="note">Every event is worth the same: up to 4 points. Golf pays 4/3/2/1/0 by finish, and each drinking game pays 1 point per win out of 4 matches. Ties on total break to the better golf finish.</p></div>';
+}
+
+function golf(){
+  const g = golfPts();
+  const labels = ["1st","2nd","3rd","4th","5th"];
+  return `<div class="stack">
+    <div class="panel">
+      <h3 class="panel-h">Scramble totals</h3>
+      <p class="panel-sub">Enter each team's total strokes. Lowest total takes the most points.</p>
+      ${S.teams.map(t => `
+        <div class="score-row">
+          <span class="score-team">${esc(t.name)}</span>
+          <input class="score-input js-score" data-id="${t.id}" inputmode="numeric" placeholder="––" value="${esc(S.golfScores[t.id])}" aria-label="${esc(t.name)} scramble total">
+          <span class="score-pts" data-pts="${t.id}">${fmt(g[t.id])} pts</span>
+        </div>`).join("")}
+    </div>
+    <div class="panel">
+      <h3 class="panel-h">Points by finish</h3>
+      <p class="panel-sub">Set to match one drinking game: 4 points for the best round, 0 for the worst. Tied teams split the places they take up.</p>
+      <div class="pts-grid">
+        ${S.golfPoints.map((p,i) => `
+          <label class="pts-cell"><span>${labels[i]}</span>
+            <input class="js-gp" data-i="${i}" inputmode="numeric" value="${p}" aria-label="Points for place ${i+1}">
+          </label>`).join("")}
+      </div>
+    </div>
+  </div>`;
+}
+
+function games(){
+  const game = S.games.find(x => x.id === activeGame) || S.games[0];
+  activeGame = game.id;
+  const w = winsOf(game);
+  return `<div class="stack">
+    <div class="gchips">
+      ${S.games.map(x => `<button class="gchip js-gtab ${x.id===game.id?"on":""}" data-id="${x.id}">${esc(x.name)}</button>`).join("")}
+    </div>
+    <div class="panel">
+      <div class="game-head">
+        <input class="game-name js-gname" value="${esc(game.name)}" aria-label="Game name">
+        <button class="ghost js-grm">Remove</button>
+      </div>
+      <p class="panel-sub">Tap the name above to rename this game. Every team plays every other team once — tap the winner, tap again to undo.</p>
+      ${MATCHUPS.map(m => {
+        const win = game.results[m.key];
+        return `<div class="match">
+          <button class="side js-win ${win===m.a?"win":""} ${win===m.b?"lose":""}" data-k="${m.key}" data-t="${m.a}">${esc(teamName(m.a))}</button>
+          <span class="vs">v</span>
+          <button class="side js-win ${win===m.b?"win":""} ${win===m.a?"lose":""}" data-k="${m.key}" data-t="${m.b}">${esc(teamName(m.b))}</button>
+        </div>`;
+      }).join("")}
+      <div class="wins-panel">
+        <h4 class="wins-h">${esc(game.name)} wins</h4>
+        ${S.teams.map(t => `
+          <div class="wins-row">
+            <span class="wins-name">${esc(t.name)}</span>
+            ${tally(w[t.id])}
+            <span class="wins-num">${w[t.id]}/4</span>
+          </div>`).join("")}
+      </div>
+    </div>
+    <div class="panel">
+      <h3 class="panel-h">Add a game</h3>
+      <p class="panel-sub">New games get the same 10-matchup round robin and are worth up to 4 points, same as everything else.</p>
+      <div class="add-row">
+        <input class="text-input" id="newGame" placeholder="Cornhole, ladder golf, dizzy bat…">
+        <button class="solid" id="addGame">Add</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function poolNames(){
+  return (S.pool||"").split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+}
+
+function teams(){
+  const n = poolNames().length;
+  return `<div class="stack">
+    <div class="panel">
+      <h3 class="panel-h">Player pool</h3>
+      <p class="panel-sub">Paste all 20 names, one per line or separated by commas. Drawing shuffles them and deals four to a team.</p>
+      <textarea class="pool-area" id="pool" placeholder="Thomas&#10;Julian&#10;…" aria-label="Player pool">${esc(S.pool||"")}</textarea>
+      <div class="pool-bar">
+        <span class="count ${n===20?"full":""}" id="poolCount">${n} ${n===1?"name":"names"}${n===20?" — full field":""}</span>
+        <button class="ghost" id="pullNames">Pull from teams</button>
+        <button class="solid" id="draw">Draw teams</button>
+        <div class="pool-msg" id="poolMsg"></div>
+      </div>
+    </div>
+    ${S.teams.map((t,ti) => `
+      <div class="panel">
+        <input class="team-name js-tname" data-i="${ti}" value="${esc(t.name)}" aria-label="Team ${ti+1} name">
+        <div class="roster">
+          ${t.players.map((p,pi) => `
+            <input class="player-input js-player" data-t="${ti}" data-p="${pi}" placeholder="Player ${pi+1}" value="${esc(p)}" aria-label="${esc(t.name)} player ${pi+1}">`).join("")}
+        </div>
+      </div>`).join("")}
+    <div class="panel">
+      <h3 class="panel-h">Start over</h3>
+      <p class="panel-sub">Clears every name, score and result for everyone.</p>
+      <button class="ghost danger" id="reset">Reset tournament</button>
+    </div>
+  </div>`;
+}
+
+/* ---------------- events ---------------- */
+function arm(btn, label, action){
+  if (btn.dataset.armed === "1"){
+    btn.dataset.armed = "";
+    action();
+    return;
+  }
+  const orig = btn.textContent;
+  btn.dataset.armed = "1";
+  btn.textContent = label;
+  btn.classList.add("armed");
+  setTimeout(() => {
+    if (btn.dataset.armed === "1"){
+      btn.dataset.armed = "";
+      btn.textContent = orig;
+      btn.classList.remove("armed");
+    }
+  }, 4000);
+}
+function poolMsg(text){
+  const el = document.getElementById("poolMsg");
+  if (el) el.textContent = text;
+}
+
+function wire(){
+  document.querySelectorAll(".js-score").forEach(el => el.oninput = e => {
+    const v = e.target.value.replace(/[^0-9.]/g,"");
+    if (v !== e.target.value) e.target.value = v;
+    S.golfScores[e.target.dataset.id] = v;
+    const g = golfPts();
+    document.querySelectorAll("[data-pts]").forEach(s => s.textContent = fmt(g[s.dataset.pts]) + " pts");
+    touch();
+  });
+  document.querySelectorAll(".js-gp").forEach(el => el.oninput = e => {
+    S.golfPoints[+e.target.dataset.i] = parseFloat(e.target.value) || 0;
+    const g = golfPts();
+    document.querySelectorAll("[data-pts]").forEach(s => s.textContent = fmt(g[s.dataset.pts]) + " pts");
+    touch();
+  });
+  document.querySelectorAll(".js-gtab").forEach(el => el.onclick = () => { activeGame = el.dataset.id; render(); });
+  document.querySelectorAll(".js-win").forEach(el => el.onclick = () => {
+    const g = S.games.find(x => x.id === activeGame);
+    if (g.results[el.dataset.k] === el.dataset.t) delete g.results[el.dataset.k];
+    else g.results[el.dataset.k] = el.dataset.t;
+    touch(); render();
+  });
+  const gn = document.querySelector(".js-gname");
+  if (gn) gn.oninput = e => {
+    S.games.find(x => x.id === activeGame).name = e.target.value;
+    const chip = document.querySelector('.js-gtab[data-id="'+activeGame+'"]');
+    if (chip) chip.textContent = e.target.value;
+    const h = document.querySelector(".wins-h");
+    if (h) h.textContent = e.target.value + " wins";
+    touch();
+  };
+  const rm = document.querySelector(".js-grm");
+  if (rm) rm.onclick = () => arm(rm, "Delete?", () => {
+    S.games = S.games.filter(x => x.id !== activeGame);
+    if (!S.games.length) S.games.push({id:"g"+Date.now(), name:"New game", results:{}});
+    activeGame = S.games[0].id; touch(); render();
+  });
+  const add = document.getElementById("addGame");
+  if (add) add.onclick = () => {
+    const inp = document.getElementById("newGame");
+    const name = inp.value.trim(); if (!name) { inp.focus(); return; }
+    const id = "g" + Date.now();
+    S.games.push({id, name, results:{}});
+    activeGame = id; touch(); render();
+  };
+  const ng = document.getElementById("newGame");
+  if (ng) ng.onkeydown = e => { if (e.key === "Enter") document.getElementById("addGame").click(); };
+  document.querySelectorAll(".js-tname").forEach(el => el.oninput = e => {
+    S.teams[+e.target.dataset.i].name = e.target.value; touch();
+  });
+  document.querySelectorAll(".js-player").forEach(el => el.oninput = e => {
+    S.teams[+e.target.dataset.t].players[+e.target.dataset.p] = e.target.value; touch();
+  });
+  const pool = document.getElementById("pool");
+  if (pool) pool.oninput = e => {
+    S.pool = e.target.value;
+    const n = poolNames().length;
+    const c = document.getElementById("poolCount");
+    c.textContent = n + (n===1?" name":" names") + (n===20 ? " — full field" : "");
+    c.classList.toggle("full", n===20);
+    touch();
+  };
+  const pull2 = document.getElementById("pullNames");
+  if (pull2) pull2.onclick = () => {
+    const all = S.teams.flatMap(t => t.players).filter(Boolean);
+    if (!all.length) { poolMsg("No names on the teams yet."); return; }
+    S.pool = all.join("\n"); touch(); render();
+    poolMsg("Loaded " + all.length + " names back into the pool.");
+  };
+  const draw = document.getElementById("draw");
+  if (draw) draw.onclick = () => {
+    const names = poolNames();
+    if (names.length < 2) { poolMsg("Add at least two names to the pool first."); return; }
+    const filled = S.teams.some(t => t.players.some(Boolean));
+    const go = () => {
+      for (let i = names.length-1; i > 0; i--){
+        const j = Math.floor(Math.random()*(i+1));
+        const tmp = names[i]; names[i] = names[j]; names[j] = tmp;
+      }
+      const buckets = S.teams.map(() => []);
+      names.forEach((nm,i) => buckets[i % S.teams.length].push(nm));
+      S.teams.forEach((t,i) => {
+        const b = buckets[i];
+        while (b.length < 4) b.push("");
+        t.players = b;
+      });
+      touch(); render();
+      poolMsg(names.length + " names dealt into " + S.teams.length + " teams.");
+    };
+    if (filled) arm(draw, "Redraw?", go); else go();
+  };
+  const rs = document.getElementById("reset");
+  if (rs) rs.onclick = () => arm(rs, "Wipe everything?", () => {
+    S = blank(); activeGame = S.games[0].id; touch(); render();
+  });
+}
+
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+document.getElementById("title").oninput = e => { S.title = e.target.value; touch(); };
+
+/* ---------------- boot + sync ---------------- */
+let lastSync = 0;
+
+async function sync(){
+  if (!SHARED) return;
+  if (Date.now() - lastEdit < 3000) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  const r = await pull();
+  lastSync = Date.now();
+  if (!r) return;
+  if ((r._t || 0) < (S._t || 0)) return;
+  if (JSON.stringify(r) !== JSON.stringify(S)){ S = r; render(); }
+}
+
+function tickLive(){
+  const el = document.getElementById("liveTime");
+  if (!el) return;
+  if (!SHARED){ el.textContent = "local"; return; }
+  if (!lastSync){ el.textContent = "live"; return; }
+  const s = Math.round((Date.now() - lastSync) / 1000);
+  el.textContent = s < 8 ? "live" : s < 60 ? s + "s ago" : Math.round(s/60) + "m ago";
+}
+
+function shareMsg(t){
+  const el = document.getElementById("shareMsg");
+  if (el) el.textContent = t;
+}
+
+function wireShare(){
+  const btn = document.getElementById("share");
+  btn.onclick = async () => {
+    if (!SHARED){ shareMsg("No shared board yet — reload the page to create one."); return; }
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      shareMsg("Link copied. Send it to the group.");
+      return;
+    } catch(e){ /* clipboard blocked — show it instead */ }
+    if (document.getElementById("shareUrl")) return;
+    const inp = document.createElement("input");
+    inp.className = "share-url"; inp.id = "shareUrl"; inp.value = url; inp.readOnly = true;
+    document.querySelector(".share-row").appendChild(inp);
+    inp.focus(); inp.select();
+    shareMsg("Copy this link:");
+  };
+}
+
+(async () => {
+  const cached = localStorage.getItem(KEY);
+  if (cached){ const n = normalize(JSON.parse(cached)); if (n) S = n; }
+
+  if (DB_URL || boardId){
+    SHARED = true;
+    if (boardId) setBoardId(boardId);
+    const remote = await pull();
+    if (remote) S = remote;
+    else document.getElementById("footNote").textContent = "Couldn't reach the board — retrying.";
+  } else {
+    try {
+      setBoardId(await createBoard(S));
+      SHARED = true;
+      shareMsg("New board created — copy the link for the group.");
+    } catch(e){
+      SHARED = false;
+      document.getElementById("footNote").textContent = "Couldn't create a shared board — saving on this device only.";
+    }
+  }
+
+  activeGame = (S.games[0]||{}).id || "g1";
+  lastSync = Date.now();
+  if (!SHARED) document.getElementById("liveTime").textContent = "local";
+  render();
+  wireShare();
+  document.getElementById("live").onclick = () => {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    sync();
+  };
+  setInterval(sync, 3000);
+  setInterval(tickLive, 1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(); });
+  window.addEventListener("focus", sync);
+
+  if ("serviceWorker" in navigator){
+    navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  }
+})();
+</script>
+</body>
+</html>
