@@ -13,30 +13,27 @@ Installs to the home screen and runs full screen like a real app.
    folder `/ (root)`. Save.
 4. Wait a minute, then open `https://YOUR-NAME.github.io/YOUR-REPO/`
 
-## 2. Turn on keywords (recommended)
+## 2. Set the database rules (do this once)
 
-Captains typing a word beats captains keeping a link. This needs a database that
-lets records be named, which takes about four minutes once:
+The database is already wired in. One thing left: in the Firebase console open
+**Build -> Realtime Database -> Rules**, replace the contents with this, and
+click Publish.
 
-1. https://console.firebase.google.com -> **Add project** (skip Analytics).
-2. **Build -> Realtime Database -> Create Database**, pick a region,
-   **Start in test mode**.
-3. Copy the URL at the top (`https://your-project-default-rtdb.firebaseio.com`).
-4. Paste it between the quotes on the `const DB_URL = "";` line near the top of
-   the script in `index.html`.
-5. On the **Rules** tab, replace the contents with:
+```json
+{ "rules": { "boards": { "$b": { ".read": true, ".write": true } } } }
+```
 
-   ```json
-   { "rules": { "boards": { "$b": { ".read": true, ".write": true } } } }
-   ```
+Without it, saving fails once test mode expires — or immediately, if the
+database was created in locked mode.
 
-   (Test mode expires after 30 days; this doesn't.)
+## 3. Start the board and hand out the keyword
 
-Now the app asks for a keyword instead of a link. You pick one, hand it to the
-five captains, and they type it in. Skip this and the app still works — boards
-just get a random ID shared by link instead.
+Open the page. It asks for a tournament keyword. Under **Organiser: start the
+board**, pick one (letters, numbers and dashes, e.g. `arvada2026`) and hit
+Create.
 
-## 2b. Start the board and share it
+Text that one word to the five captains. They open the same page, type the
+keyword, and they're in. No link to keep track of, and it survives reinstalls.
 
 Open your link. You'll be asked to **start a new board** or **join** one with a
 code. Start one, then tap **Copy share link** and send that link to all 20

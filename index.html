@@ -421,7 +421,7 @@ const teamName = id => (S.teams.find(t=>t.id===id)||{}).name || id;
    Optional: paste a Firebase Realtime Database URL into DB_URL below and
    the page uses that instead. See README.md.                          */
 
-const DB_URL = "";
+const DB_URL = "https://shrimpy-ac093-default-rtdb.firebaseio.com/";
 const STORE  = "https://jsonblob.com/api/jsonBlob";
 const KEY    = "tourney-board-v3";
 const IDKEY  = "tourney-board-id";
@@ -455,21 +455,29 @@ function endpoint(){
 }
 
 /* Remote stores can drop empty objects and nulls, so rebuild anything missing. */
+function toArr(v){
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === "object"){
+    return Object.keys(v).sort((a,b) => Number(a)-Number(b)).map(k => v[k]);
+  }
+  return null;
+}
+
 function normalize(x){
   if (!x || typeof x !== "object") return null;
   const b = blank();
   const out = {
     title: typeof x.title === "string" ? x.title : b.title,
     pool: typeof x.pool === "string" ? x.pool : "",
-    golfPoints: Array.isArray(x.golfPoints) ? x.golfPoints.map(n => Number(n)||0) : b.golfPoints,
+    golfPoints: toArr(x.golfPoints) ? toArr(x.golfPoints).map(n => Number(n)||0) : b.golfPoints,
     golfScores: Object.assign({t1:"",t2:"",t3:"",t4:"",t5:""}, x.golfScores || {}),
     teams: IDS.map((id,i) => {
-      const t = (Array.isArray(x.teams) ? x.teams[i] : null) || {};
-      const p = Array.isArray(t.players) ? t.players.slice() : [];
+      const t = (toArr(x.teams) || [])[i] || {};
+      const p = toArr(t.players) ? toArr(t.players).slice() : [];
       while (p.length < 4) p.push("");
       return {id, name: t.name || ("Team "+(i+1)), players: p.map(v => v == null ? "" : String(v))};
     }),
-    games: (Array.isArray(x.games) ? x.games : b.games).map((g,i) => ({
+    games: (toArr(x.games) || b.games).map((g,i) => ({
       id: g.id || ("g"+(i+1)),
       name: g.name || ("Game "+(i+1)),
       del: !!g.del,
@@ -502,20 +510,20 @@ function merge(local, remote){
   IDS.forEach(id => take("golf."+id, () => local.golfScores[id] = remote.golfScores[id]));
 
   local.teams.forEach((t,i) => {
-    const rt = (remote.teams || [])[i] || {};
+    const rt = (toArr(remote.teams) || [])[i] || {};
     take("t."+i+".name", () => t.name = rt.name || t.name);
     const n = Math.max(t.players.length, (rt.players||[]).length, 4);
     for (let j = 0; j < n; j++){
       take("t."+i+".p."+j, () => {
         while (t.players.length <= j) t.players.push("");
-        t.players[j] = (rt.players || [])[j] || "";
+        t.players[j] = rp[j] || "";
       });
     }
   });
 
   const byId = {};
   local.games.forEach(g => byId[g.id] = g);
-  (remote.games || []).forEach(rg => {
+  (toArr(remote.games) || []).forEach(rg => {
     let g = byId[rg.id];
     if (!g){
       g = {id: rg.id, name: rg.name, del: !!rg.del, results: {}};
