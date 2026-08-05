@@ -13,7 +13,30 @@ Installs to the home screen and runs full screen like a real app.
    folder `/ (root)`. Save.
 4. Wait a minute, then open `https://YOUR-NAME.github.io/YOUR-REPO/`
 
-## 2. Start the board and share it
+## 2. Turn on keywords (recommended)
+
+Captains typing a word beats captains keeping a link. This needs a database that
+lets records be named, which takes about four minutes once:
+
+1. https://console.firebase.google.com -> **Add project** (skip Analytics).
+2. **Build -> Realtime Database -> Create Database**, pick a region,
+   **Start in test mode**.
+3. Copy the URL at the top (`https://your-project-default-rtdb.firebaseio.com`).
+4. Paste it between the quotes on the `const DB_URL = "";` line near the top of
+   the script in `index.html`.
+5. On the **Rules** tab, replace the contents with:
+
+   ```json
+   { "rules": { "boards": { "$b": { ".read": true, ".write": true } } } }
+   ```
+
+   (Test mode expires after 30 days; this doesn't.)
+
+Now the app asks for a keyword instead of a link. You pick one, hand it to the
+five captains, and they type it in. Skip this and the app still works — boards
+just get a random ID shared by link instead.
+
+## 2b. Start the board and share it
 
 Open your link. You'll be asked to **start a new board** or **join** one with a
 code. Start one, then tap **Copy share link** and send that link to all 20
@@ -44,9 +67,12 @@ paste the code — nothing is lost.
 
 - **Teams** — paste the 20 names, hit Draw teams.
 - **Golf** — enter each team's scramble total. 4 / 3 / 2 / 1 / 0 by finish.
-- **Games** — a five-round schedule per game. Each round has two matches and one
-  team sitting out; every team plays the other four exactly once. Tap the winner
-  after each match. "Still to play" shows who each team still owes.
+- **Games** — each game has its own schedule and its own format. Set **teams per
+  match** (2-5), **rounds**, and **points per win** on the Format panel. Two
+  teams per match gives head-to-head with a bye; five gives one match with
+  everyone in it. The panel tells you the most a team can score, so you can
+  balance games against golf. Changing teams-per-match clears that game's
+  results, since the schedule changes shape.
 - **Board** — the running total.
 
 Tap **How to use** at the top for the captain's instructions, in the app.

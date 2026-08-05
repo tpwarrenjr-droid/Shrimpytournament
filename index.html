@@ -119,6 +119,22 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-
 .side.win{background:linear-gradient(180deg,#E8BE41,#B98D18);color:#1A1206;border-color:#B98D18;font-weight:500}
 .side.lose{opacity:.42}
 .vs{display:flex;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mute);letter-spacing:.1em}
+.lineup{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.lineup .side{flex:1 1 calc(50% - 3px);min-width:0}
+.lineup .side:only-child{flex-basis:100%}
+.fmt-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(27,92,70,.35)}
+.fmt-label{flex:1;font-size:13px;color:var(--chalk)}
+.seg{display:flex;gap:3px}
+.seg-b{width:36px;padding:8px 0;background:rgba(0,0,0,.3);border:1px solid rgba(27,92,70,.7);
+  color:var(--mute);border-radius:1px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:13px}
+.seg-b.on{background:var(--brass);border-color:var(--brass);color:#1A1206;font-weight:600}
+.fmt-input{width:74px;text-align:center;background:rgba(0,0,0,.35);color:var(--chalk);
+  border:1px solid var(--edge);border-radius:1px;padding:8px 4px;
+  font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600}
+.fmt-input:focus{outline:none;border-color:var(--brass)}
+.fmt-note{margin:11px 0 0;font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+  letter-spacing:.08em;color:var(--brass)}
+
 .round{border:1px solid rgba(27,92,70,.55);border-radius:2px;padding:11px 10px 9px;margin-bottom:9px;
   background:rgba(0,0,0,.16)}
 .round-now{border-color:var(--brass);background:rgba(212,166,42,.07);box-shadow:inset 3px 0 0 var(--brass)}
@@ -286,6 +302,44 @@ const ROUNDS = (() => {
   return rounds;
 })();
 
+/* Builds a game's schedule from its format.
+   2 teams per match  -> circle-method round robin, 2 matches + 1 bye each round.
+   3-5 teams per match -> one match per round, the lineup rotating so a
+   different team sits out each time. */
+function scheduleFor(game){
+  const k = Math.min(5, Math.max(2, game.teams || 5));
+  const R = Math.min(12, Math.max(1, game.rounds || 1));
+  const out = [];
+  for (let r = 0; r < R; r++){
+    if (k === 2){
+      const base = ROUNDS[r % 5];
+      out.push({
+        n: r+1,
+        matches: base.matches.map((m,i) => ({key: "r"+(r+1)+"m"+i, teams: [m.a, m.b]})),
+        byes: [base.bye]
+      });
+    } else {
+      const order = IDS.map((_,i) => IDS[(i + r) % 5]);
+      out.push({
+        n: r+1,
+        matches: [{key: "r"+(r+1)+"m0", teams: order.slice(0, k)}],
+        byes: order.slice(k)
+      });
+    }
+  }
+  return out;
+}
+
+/* How many matches this team is scheduled for, and which are unplayed. */
+function pending(game, teamId){
+  const res = game.results || {};
+  const out = [];
+  scheduleFor(game).forEach(r => r.matches.forEach(m => {
+    if (m.teams.indexOf(teamId) > -1 && !res[m.key]) out.push({round: r.n, teams: m.teams});
+  }));
+  return out;
+}
+
 function blank(){
   return {
     title: "The Scramble & Sauce Classic",
@@ -294,9 +348,9 @@ function blank(){
     golfPoints: [4,3,2,1,0],
     pool: "",
     games: [
-      {id:"g1", name:"Beer Dye", del:false, results:{}},
-      {id:"g2", name:"Beer Pong", del:false, results:{}},
-      {id:"g3", name:"Flip Cup", del:false, results:{}}
+      {id:"g1", name:"Beer Dye",  del:false, teams:5, rounds:1, winPts:4, results:{}},
+      {id:"g2", name:"Beer Pong", del:false, teams:5, rounds:1, winPts:4, results:{}},
+      {id:"g3", name:"Flip Cup",  del:false, teams:5, rounds:1, winPts:4, results:{}}
     ],
     /* V maps each individual field to the time it last changed. Merging on
        these instead of the whole document is what lets five phones enter
@@ -339,10 +393,10 @@ function winsOf(game){
 }
 function standings(){
   const g = golfPts();
-  const per = liveGames().map(x => ({game:x, wins:winsOf(x)}));
+  const per = liveGames().map(x => ({game:x, wins:winsOf(x), pts:(x.winPts != null ? x.winPts : 4)}));
   const rows = S.teams.map(t => {
-    const gw = per.map(p => ({id:p.game.id, name:p.game.name, wins:p.wins[t.id]}));
-    const wt = gw.reduce((s,x) => s+x.wins, 0);
+    const gw = per.map(p => ({id:p.game.id, name:p.game.name, wins:p.wins[t.id], pts:p.wins[t.id]*p.pts}));
+    const wt = gw.reduce((s,x) => s+x.pts, 0);
     const raw = parseFloat(S.golfScores[t.id]);
     return {team:t, golf:g[t.id], score:isNaN(raw)?null:raw, gw, wt, total:g[t.id]+wt};
   });
@@ -374,9 +428,18 @@ const IDKEY  = "tourney-board-id";
 
 /* The link carries the board ID. When the app is launched from the home
    screen the query string is gone, so fall back to the last one used. */
+function cleanWord(x){
+  return String(x||"").toLowerCase().trim().replace(/[^a-z0-9-]/g,"").slice(0,32);
+}
+
+/* With DB_URL set, a board is addressed by its keyword and captains just type
+   it in. Without one, boards get a random ID and are shared by link. */
+const BYWORD = !!DB_URL;
+
 let boardId = new URLSearchParams(location.search).get("board")
            || localStorage.getItem(IDKEY)
            || "";
+if (BYWORD) boardId = cleanWord(boardId);
 let SHARED  = false;
 
 function setBoardId(id){
@@ -386,7 +449,7 @@ function setBoardId(id){
 }
 
 function endpoint(){
-  if (DB_URL)  return DB_URL.replace(/\/+$/,"") + "/board.json";
+  if (DB_URL)  return boardId ? DB_URL.replace(/\/+$/,"") + "/boards/" + boardId + ".json" : null;
   if (boardId) return STORE + "/" + boardId;
   return null;
 }
@@ -410,6 +473,9 @@ function normalize(x){
       id: g.id || ("g"+(i+1)),
       name: g.name || ("Game "+(i+1)),
       del: !!g.del,
+      teams: Math.min(5, Math.max(2, Number(g.teams) || 5)),
+      rounds: Math.min(12, Math.max(1, Number(g.rounds) || 1)),
+      winPts: Number(g.winPts) >= 0 ? Number(g.winPts) : 4,
       results: g.results || {}
     })),
     V: (x.V && typeof x.V === "object") ? x.V : {}
@@ -460,6 +526,9 @@ function merge(local, remote){
     }
     take("g."+rg.id+".name", () => g.name = rg.name);
     take("g."+rg.id+".del",  () => g.del  = !!rg.del);
+    take("g."+rg.id+".fmt",  () => { g.teams = rg.teams; g.rounds = rg.rounds; });
+    take("g."+rg.id+".pts",  () => g.winPts = rg.winPts);
+    take("g."+rg.id+".wipe", () => g.results = {});
     const keys = new Set(Object.keys(g.results||{}).concat(Object.keys(rg.results||{})));
     keys.forEach(k => take("g."+rg.id+".r."+k, () => {
       const w = (rg.results || {})[k];
@@ -595,6 +664,28 @@ function cachedState(){
 
 function gate(){
   const c = cachedState();
+  if (BYWORD){
+    return `<div class="stack">
+      <div class="panel">
+        <h3 class="panel-h">Enter the tournament keyword</h3>
+        <p class="panel-sub">Your captain gave you a word. Type it in to open the board — no link needed.</p>
+        <div class="add-row">
+          <input class="text-input" id="joinCode" placeholder="e.g. arvada2026" autocapitalize="none" autocorrect="off">
+          <button class="solid" id="joinBtn">Open</button>
+        </div>
+        <div class="pool-msg" id="gateMsg"></div>
+      </div>
+      <div class="panel">
+        <h3 class="panel-h">Organiser: start the board</h3>
+        <p class="panel-sub">Pick a keyword and hand it to the five captains. Letters, numbers and dashes.${
+          c ? " This device has saved scores — they'll be carried over." : ""}</p>
+        <div class="add-row">
+          <input class="text-input" id="newWord" placeholder="Choose a keyword" autocapitalize="none" autocorrect="off">
+          <button class="ghost" id="newBtn">Create</button>
+        </div>
+      </div>
+    </div>`;
+  }
   return `<div class="stack">
     <div class="panel">
       <h3 class="panel-h">Join a board</h3>
@@ -623,13 +714,24 @@ function wireGate(){
 
   document.getElementById("joinBtn").onclick = async () => {
     const raw = document.getElementById("joinCode").value.trim();
-    const m = raw.match(/board=([A-Za-z0-9_-]+)/);
-    const id = m ? m[1] : raw.replace(/^.*\//, "");
-    if (!id){ msg("Paste the link or the code from it."); return; }
-    msg("Looking for that board…");
+    let id;
+    if (BYWORD){
+      id = cleanWord(raw);
+      if (!id){ msg("Type the keyword your captain gave you."); return; }
+    } else {
+      const m = raw.match(/board=([A-Za-z0-9_-]+)/);
+      id = m ? m[1] : raw.replace(/^.*\//, "");
+      if (!id){ msg("Paste the link or the code from it."); return; }
+    }
+    msg("Looking…");
     boardId = id;
     const remote = await pull();
-    if (!remote){ boardId = ""; msg("No board found with that code. Check the link."); return; }
+    if (!remote){
+      boardId = "";
+      msg(BYWORD ? "No board called \u201c" + id + "\u201d yet. Check the spelling with your captain."
+                 : "No board found with that code. Check the link.");
+      return;
+    }
     S = remote;
     setBoardId(id);
     SHARED = true; gated = false;
@@ -641,7 +743,17 @@ function wireGate(){
     const c = useCache ? cachedState() : null;
     if (c) S = c; else S = blank();
     try {
-      setBoardId(await createBoard(S));
+      if (BYWORD){
+        const word = cleanWord(document.getElementById("newWord").value);
+        if (!word){ msg("Pick a keyword first."); return; }
+        boardId = word;
+        const exists = await pull();
+        if (exists){ msg("\u201c" + word + "\u201d is already in use. Open it above, or pick another word."); boardId = ""; return; }
+        await push(S);
+        setBoardId(word);
+      } else {
+        setBoardId(await createBoard(S));
+      }
       SHARED = true; gated = false;
       activeGame = (liveGames()[0]||{}).id || "g1";
       render();
@@ -662,6 +774,7 @@ function helpPanel(){
   return `<div class="panel help">
     <h3 class="panel-h">Captain's job</h3>
     <ol>
+      <li><b>Open the board.</b> Type the tournament keyword when the app asks. That's how you find it — no link to keep track of.</li>
       <li><b>Install it.</b> iPhone: Share button, then Add to Home Screen (must be Safari). Android: menu, then Install app.</li>
       <li><b>Check your roster</b> on the Teams tab. Fix any spelling — don't redraw the teams.</li>
       <li><b>After your golf round,</b> go to Golf and enter your team's total scramble strokes in your own row.</li>
@@ -700,7 +813,7 @@ function render(){
   document.getElementById("helpBtn").classList.toggle("on", helpOpen);
   wire();
   const code = document.getElementById("boardCode");
-  if (code) code.textContent = boardId ? "Board " + boardId.slice(0,8) : "";
+  if (code) code.textContent = boardId ? (BYWORD ? "Keyword: " + boardId : "Board " + boardId.slice(0,8)) : "";
 }
 
 function plates(v){
@@ -724,7 +837,7 @@ function board(){
       </div>
       <div class="break">
         <span class="chip"><b>Golf</b>${fmt(r.golf)}${r.score!==null ? ' <em>('+r.score+')</em>' : ""}</span>
-        ${r.gw.map(g => `<span class="chip"><b>${esc(g.name)}</b>${g.wins}</span>`).join("")}
+        ${r.gw.map(g => `<span class="chip"><b>${esc(g.name)}</b>${fmt(g.pts)}${g.wins ? ' <em>('+g.wins+'W)</em>' : ""}</span>`).join("")}
       </div>
       <div class="roster-line">${esc(r.team.players.filter(Boolean).join(" · ")) || "No players yet"}</div>
     </article>`).join("") +
@@ -764,13 +877,13 @@ function games(){
   activeGame = game.id;
   const res = game.results || {};
   const w = winsOf(game);
+  const wp = game.winPts != null ? game.winPts : 4;
+  const sched = scheduleFor(game);
 
-  const rounds = ROUNDS.map(r => ({
-    n: r.n, bye: r.bye, matches: r.matches,
-    done: r.matches.every(m => res[m.key])
-  }));
+  const rounds = sched.map(r => ({...r, done: r.matches.every(m => res[m.key])}));
   const upNext = rounds.findIndex(r => !r.done);
-  const left = MATCHUPS.filter(m => !res[m.key]).length;
+  let left = 0;
+  sched.forEach(r => r.matches.forEach(m => { if (!res[m.key]) left++; }));
 
   const roundHtml = rounds.map((r,i) => {
     const state = r.done ? "done" : (i === upNext ? "now" : "later");
@@ -782,21 +895,17 @@ function games(){
       </div>
       ${r.matches.map(m => {
         const win = res[m.key];
-        return `<div class="match">
-          <button class="side js-win ${win===m.a?"win":""} ${win===m.b?"lose":""}" data-k="${m.key}" data-t="${m.a}">${esc(teamName(m.a))}</button>
-          <span class="vs">v</span>
-          <button class="side js-win ${win===m.b?"win":""} ${win===m.a?"lose":""}" data-k="${m.key}" data-t="${m.b}">${esc(teamName(m.b))}</button>
+        return `<div class="lineup">
+          ${m.teams.map(id => `
+            <button class="side js-win ${win===id?"win":""} ${win&&win!==id?"lose":""}"
+                    data-k="${m.key}" data-t="${id}">${esc(teamName(id))}</button>`).join("")}
         </div>`;
       }).join("")}
-      <div class="bye">Sitting out: ${esc(teamName(r.bye))}</div>
+      ${r.byes.length ? `<div class="bye">Sitting out: ${r.byes.map(b=>esc(teamName(b))).join(", ")}</div>` : ""}
     </div>`;
   }).join("");
 
-  const owed = S.teams.map(t => {
-    const opp = MATCHUPS.filter(m => (m.a===t.id || m.b===t.id) && !res[m.key])
-                        .map(m => teamName(m.a === t.id ? m.b : m.a));
-    return {name: t.name, opp};
-  });
+  const owed = S.teams.map(t => ({name: t.name, list: pending(game, t.id)}));
 
   return `<div class="stack">
     <div class="gchips">
@@ -810,8 +919,34 @@ function games(){
       </div>
       <p class="panel-sub">${left === 0
         ? "Every match is in. This game is finished."
-        : "Find your round, play the match, then tap the team that won. Tap again to undo."}</p>
+        : "Play the match, then tap the team that won. Tap again to undo."}</p>
       ${roundHtml}
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-h">Format</h3>
+      <p class="panel-sub">${game.teams >= 5
+        ? "All five teams play each round together — one winner per round."
+        : game.teams === 2
+          ? "Head to head. Two matches a round, one team sitting out."
+          : game.teams + " teams face off each round; the rest sit out."}
+        Winning is worth ${fmt(wp)} ${wp === 1 ? "point" : "points"}.</p>
+
+      <div class="fmt-row">
+        <span class="fmt-label">Teams per match</span>
+        <div class="seg">
+          ${[2,3,4,5].map(n => `<button class="seg-b js-fteams ${game.teams===n?"on":""}" data-n="${n}">${n}</button>`).join("")}
+        </div>
+      </div>
+      <div class="fmt-row">
+        <span class="fmt-label">Rounds</span>
+        <input class="fmt-input js-frounds" inputmode="numeric" value="${game.rounds}" aria-label="Rounds in this game">
+      </div>
+      <div class="fmt-row">
+        <span class="fmt-label">Points per win</span>
+        <input class="fmt-input js-fpts" inputmode="decimal" value="${wp}" aria-label="Points for winning a match">
+      </div>
+      <p class="fmt-note">Most a team can score here: ${fmt(maxFor(game))} points.</p>
     </div>
 
     <div class="panel">
@@ -821,8 +956,12 @@ function games(){
       ${owed.map(o => `
         <div class="owed-row">
           <span class="owed-name">${esc(o.name)}</span>
-          <span class="owed-list ${o.opp.length ? "" : "clear"}">${
-            o.opp.length ? esc(o.opp.join(", ")) : "Done — all four played"
+          <span class="owed-list ${o.list.length ? "" : "clear"}">${
+            o.list.length
+              ? esc(o.list.map(x => game.teams === 2
+                  ? "R" + x.round + " v " + teamName(x.teams.find(id => teamName(id) !== o.name) || x.teams[0])
+                  : "Round " + x.round).join(", "))
+              : "Done — nothing left"
           }</span>
         </div>`).join("")}
     </div>
@@ -833,19 +972,31 @@ function games(){
         <div class="wins-row">
           <span class="wins-name">${esc(t.name)}</span>
           ${tally(w[t.id])}
-          <span class="wins-num">${w[t.id]}/4</span>
+          <span class="wins-num">${fmt(w[t.id]*wp)} pts</span>
         </div>`).join("")}
     </div>
 
     <div class="panel">
       <h3 class="panel-h">Add a game</h3>
-      <p class="panel-sub">New games get the same five-round schedule and are worth up to 4 points, same as everything else.</p>
+      <p class="panel-sub">New games start as one round with all five teams. Change the format after adding it.</p>
       <div class="add-row">
         <input class="text-input" id="newGame" placeholder="Cornhole, ladder golf, dizzy bat…">
         <button class="solid" id="addGame">Add</button>
       </div>
     </div>
   </div>`;
+}
+
+/* Best case for one team in this game: win every match it is scheduled for. */
+function maxFor(game){
+  const wp = game.winPts != null ? game.winPts : 4;
+  let best = 0;
+  IDS.forEach(id => {
+    let n = 0;
+    scheduleFor(game).forEach(r => r.matches.forEach(m => { if (m.teams.indexOf(id) > -1) n++; }));
+    if (n > best) best = n;
+  });
+  return best * wp;
 }
 
 function poolNames(){
@@ -930,6 +1081,28 @@ function wire(){
     else g.results[el.dataset.k] = el.dataset.t;
     touch("g." + activeGame + ".r." + el.dataset.k); render();
   });
+  const g0 = () => S.games.find(x => x.id === activeGame);
+  document.querySelectorAll(".js-fteams").forEach(el => el.onclick = () => {
+    const g = g0(); const n = +el.dataset.n;
+    if (g.teams === n) return;
+    g.teams = n; g.results = {};                 // schedule changed, results no longer map
+    touch("g."+g.id+".fmt", "g."+g.id+".wipe"); render();
+  });
+  const fr = document.querySelector(".js-frounds");
+  if (fr) fr.onchange = e => {
+    const g = g0();
+    const n = Math.min(12, Math.max(1, parseInt(e.target.value,10) || 1));
+    g.rounds = n; e.target.value = n;
+    touch("g."+g.id+".fmt"); render();
+  };
+  const fp = document.querySelector(".js-fpts");
+  if (fp) fp.onchange = e => {
+    const g = g0();
+    const v = parseFloat(e.target.value);
+    g.winPts = isNaN(v) || v < 0 ? 0 : v; e.target.value = g.winPts;
+    touch("g."+g.id+".pts"); render();
+  };
+
   const gn = document.querySelector(".js-gname");
   if (gn) gn.oninput = e => {
     S.games.find(x => x.id === activeGame).name = e.target.value;
@@ -957,7 +1130,7 @@ function wire(){
     const inp = document.getElementById("newGame");
     const name = inp.value.trim(); if (!name) { inp.focus(); return; }
     const id = "g" + Date.now();
-    S.games.push({id, name, del:false, results:{}});
+    S.games.push({id, name, del:false, teams:5, rounds:1, winPts:4, results:{}});
     activeGame = id; touch("g." + id + ".del", "g." + id + ".name"); render();
   };
   const ng = document.getElementById("newGame");
@@ -1093,13 +1266,14 @@ function wireShare(){
   const cached = localStorage.getItem(KEY);
   if (cached){ const n = normalize(JSON.parse(cached)); if (n) S = n; }
 
-  if (DB_URL || boardId){
-    gated = false;
-    SHARED = true;
-    if (boardId) setBoardId(boardId);
+  if (boardId){
     const remote = await pull();
-    if (remote) S = remote;
-    else document.getElementById("footNote").textContent = "Couldn't reach the board — retrying.";
+    if (remote){
+      gated = false; SHARED = true; S = remote; setBoardId(boardId);
+    } else {
+      gated = true;            // keyword not found, or offline — let them choose
+      boardId = "";
+    }
   } else {
     /* No board ID. Never create one automatically — that would strand an
        existing tournament. Ask instead. */
