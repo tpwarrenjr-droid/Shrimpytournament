@@ -164,6 +164,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-
   letter-spacing:.06em;color:var(--brass);min-height:14px}
 
 .share-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 18px}
+.code{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);border:1px solid rgba(27,92,70,.7);padding:5px 8px;border-radius:1px}
 .share-msg{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;color:var(--brass);flex:1;min-width:0}
 .share-url{width:100%;margin-top:8px;background:rgba(0,0,0,.35);border:1px solid var(--edge);
   border-radius:1px;color:var(--chalk);padding:9px;font-family:'IBM Plex Mono',monospace;font-size:12px}
@@ -203,6 +204,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-
 
   <div class="share-row">
     <button class="solid" id="share">Copy share link</button>
+    <span class="code" id="boardCode"></span>
     <span class="share-msg" id="shareMsg"></span>
   </div>
 
@@ -242,12 +244,19 @@ function blank(){
     golfPoints: [4,3,2,1,0],
     pool: "",
     games: [
-      {id:"g1", name:"Beer Dye", results:{}},
-      {id:"g2", name:"Beer Pong", results:{}},
-      {id:"g3", name:"Flip Cup", results:{}}
-    ]
+      {id:"g1", name:"Beer Dye", del:false, results:{}},
+      {id:"g2", name:"Beer Pong", del:false, results:{}},
+      {id:"g3", name:"Flip Cup", del:false, results:{}}
+    ],
+    /* V maps each individual field to the time it last changed. Merging on
+       these instead of the whole document is what lets five phones enter
+       different scores at the same moment without overwriting each other. */
+    V: {}
   };
 }
+
+/* Live games only — deleted ones stay as tombstones so the deletion syncs. */
+function liveGames(){ return S.games.filter(g => !g.del); }
 
 let S = blank();
 let tab = "board";
@@ -280,7 +289,7 @@ function winsOf(game){
 }
 function standings(){
   const g = golfPts();
-  const per = S.games.map(x => ({game:x, wins:winsOf(x)}));
+  const per = liveGames().map(x => ({game:x, wins:winsOf(x)}));
   const rows = S.teams.map(t => {
     const gw = per.map(p => ({id:p.game.id, name:p.game.name, wins:p.wins[t.id]}));
     const wt = gw.reduce((s,x) => s+x.wins, 0);
@@ -350,12 +359,73 @@ function normalize(x){
     games: (Array.isArray(x.games) ? x.games : b.games).map((g,i) => ({
       id: g.id || ("g"+(i+1)),
       name: g.name || ("Game "+(i+1)),
+      del: !!g.del,
       results: g.results || {}
     })),
-    _t: x._t || 0
+    V: (x.V && typeof x.V === "object") ? x.V : {}
   };
   if (!out.games.length) out.games = b.games;
   return out;
+}
+
+/* ---------------- merge ----------------
+   Field-level last-writer-wins. Anything the other device changed more
+   recently than this one wins that field; everything else is kept. */
+function merge(local, remote){
+  if (!remote) return {state: local, changed: false};
+  const lv = local.V || {}, rv = remote.V || {};
+  const V = Object.assign({}, lv);
+  let changed = false;
+  const take = (f, apply) => {
+    if ((rv[f] || 0) > (V[f] || 0)){ apply(); V[f] = rv[f]; changed = true; }
+  };
+
+  take("title", () => local.title = remote.title);
+  take("pool",  () => local.pool  = remote.pool);
+  for (let i = 0; i < 5; i++) take("gp."+i, () => local.golfPoints[i] = remote.golfPoints[i]);
+  IDS.forEach(id => take("golf."+id, () => local.golfScores[id] = remote.golfScores[id]));
+
+  local.teams.forEach((t,i) => {
+    const rt = (remote.teams || [])[i] || {};
+    take("t."+i+".name", () => t.name = rt.name || t.name);
+    const n = Math.max(t.players.length, (rt.players||[]).length, 4);
+    for (let j = 0; j < n; j++){
+      take("t."+i+".p."+j, () => {
+        while (t.players.length <= j) t.players.push("");
+        t.players[j] = (rt.players || [])[j] || "";
+      });
+    }
+  });
+
+  const byId = {};
+  local.games.forEach(g => byId[g.id] = g);
+  (remote.games || []).forEach(rg => {
+    let g = byId[rg.id];
+    if (!g){
+      g = {id: rg.id, name: rg.name, del: !!rg.del, results: {}};
+      local.games.push(g); byId[rg.id] = g;
+      V["g."+rg.id+".name"] = rv["g."+rg.id+".name"] || 0;
+      V["g."+rg.id+".del"]  = rv["g."+rg.id+".del"]  || 0;
+      changed = true;
+    }
+    take("g."+rg.id+".name", () => g.name = rg.name);
+    take("g."+rg.id+".del",  () => g.del  = !!rg.del);
+    const keys = new Set(Object.keys(g.results||{}).concat(Object.keys(rg.results||{})));
+    keys.forEach(k => take("g."+rg.id+".r."+k, () => {
+      const w = (rg.results || {})[k];
+      if (w) g.results[k] = w; else delete g.results[k];
+    }));
+  });
+
+  local.V = V;
+  return {state: local, changed};
+}
+
+/* Does this device hold anything the server hasn't seen? */
+function aheadOf(remote){
+  const lv = S.V || {}, rv = (remote && remote.V) || {};
+  for (const f in lv) if ((lv[f] || 0) > (rv[f] || 0)) return true;
+  return false;
 }
 
 async function pull(){
@@ -402,36 +472,166 @@ async function createBoard(state){
   return id;
 }
 
+let dirty = false, flushing = false, netOk = true, needsRender = false;
+
+function saveLocal(){
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+}
+
+function typing(){
+  const t = document.activeElement && document.activeElement.tagName;
+  return t === "INPUT" || t === "TEXTAREA";
+}
+
+/* Every edit names the exact fields it changed and stamps them. */
 function touch(){
-  lastEdit = Date.now();
+  const now = Date.now();
+  for (let i = 0; i < arguments.length; i++) S.V[arguments[i]] = now;
+  lastEdit = now;
+  dirty = true;
+  saveLocal();
+  setStatus();
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    try {
-      S._t = Date.now();
-      await push(S);
-      localStorage.setItem(KEY, JSON.stringify(S));
-      const el = document.getElementById("saved");
-      el.classList.add("on"); setTimeout(()=>el.classList.remove("on"), 1400);
-      document.getElementById("footNote").textContent = SHARED
-        ? "Everyone with this link sees and edits the same board."
-        : "Saved on this device only — reload to try reconnecting.";
-    } catch(e){
-      document.getElementById("footNote").textContent = "Not saving right now — check the connection.";
+  saveTimer = setTimeout(flush, 400);
+}
+
+/* Read, merge, write — so a save can never clobber someone else's entry. */
+async function flush(){
+  if (!SHARED || gated || flushing) return;
+  flushing = true;
+  try {
+    const remote = await pull();
+    if (remote){
+      const res = merge(S, remote);
+      S = res.state;
+      if (res.changed){ if (typing()) needsRender = true; else render(); }
     }
-  }, 500);
+    await push(S);
+    dirty = false; netOk = true;
+    saveLocal();
+    const el = document.getElementById("saved");
+    if (el){ el.classList.add("on"); setTimeout(()=>el.classList.remove("on"), 1200); }
+  } catch(e){
+    netOk = false;              // stays dirty; the retry loop keeps trying
+  } finally {
+    flushing = false;
+    setStatus();
+  }
+}
+
+function setStatus(){
+  const note = document.getElementById("footNote");
+  if (!note) return;
+  if (!SHARED){ note.textContent = "Saved on this device only."; return; }
+  if (!netOk)  { note.textContent = "Offline — your entries are saved and will sync when signal returns."; return; }
+  if (dirty)   { note.textContent = "Syncing…"; return; }
+  note.textContent = "Everyone with this link sees and edits the same board.";
+}
+
+let gated = false;
+
+function cachedState(){
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const n = normalize(JSON.parse(raw));
+    if (!n) return null;
+    const hasWork = n.teams.some(t => t.players.some(Boolean))
+      || Object.values(n.golfScores).some(v => v !== "")
+      || n.games.some(g => Object.keys(g.results||{}).length);
+    return hasWork ? n : null;
+  } catch(e){ return null; }
+}
+
+function gate(){
+  const c = cachedState();
+  return `<div class="stack">
+    <div class="panel">
+      <h3 class="panel-h">Join a board</h3>
+      <p class="panel-sub">A board holds the scores everyone shares. Paste the link or code you were sent.</p>
+      <div class="add-row">
+        <input class="text-input" id="joinCode" placeholder="Paste link or board code">
+        <button class="solid" id="joinBtn">Join</button>
+      </div>
+      <div class="pool-msg" id="gateMsg"></div>
+    </div>
+    <div class="panel">
+      <h3 class="panel-h">Or start a new board</h3>
+      <p class="panel-sub">${c
+        ? "This device has saved scores from an earlier board. Starting new will carry them over, so nothing is lost."
+        : "Creates an empty board. You'll get a link to send to the group."}</p>
+      <div class="pool-bar">
+        <button class="${c ? "ghost" : "solid"}" id="newBtn">${c ? "Start new with saved scores" : "Start a new board"}</button>
+        ${c ? '<button class="ghost" id="newEmptyBtn">Start empty</button>' : ""}
+      </div>
+    </div>
+  </div>`;
+}
+
+function wireGate(){
+  const msg = t => { const el = document.getElementById("gateMsg"); if (el) el.textContent = t; };
+
+  document.getElementById("joinBtn").onclick = async () => {
+    const raw = document.getElementById("joinCode").value.trim();
+    const m = raw.match(/board=([A-Za-z0-9_-]+)/);
+    const id = m ? m[1] : raw.replace(/^.*\//, "");
+    if (!id){ msg("Paste the link or the code from it."); return; }
+    msg("Looking for that board…");
+    boardId = id;
+    const remote = await pull();
+    if (!remote){ boardId = ""; msg("No board found with that code. Check the link."); return; }
+    S = remote;
+    setBoardId(id);
+    SHARED = true; gated = false;
+    activeGame = (liveGames()[0]||{}).id || "g1";
+    render();
+  };
+
+  const start = async (useCache) => {
+    const c = useCache ? cachedState() : null;
+    if (c) S = c; else S = blank();
+    try {
+      setBoardId(await createBoard(S));
+      SHARED = true; gated = false;
+      activeGame = (liveGames()[0]||{}).id || "g1";
+      render();
+      shareMsg("New board created — copy the link for the group.");
+    } catch(e){
+      msg("Couldn't reach the score service. Check your connection and try again.");
+    }
+  };
+  document.getElementById("newBtn").onclick = () => start(true);
+  const ne = document.getElementById("newEmptyBtn");
+  if (ne) ne.onclick = () => start(false);
 }
 
 /* ---------------- render ---------------- */
 function render(){
-  document.getElementById("title").value = S.title;
-  document.getElementById("eventCount").textContent = (S.games.length+1) + " events";
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   const m = document.getElementById("main");
+  const tabsEl = document.querySelector(".tabs");
+  const shareEl = document.querySelector(".share-row");
+
+  if (gated){
+    tabsEl.style.display = "none";
+    shareEl.style.display = "none";
+    document.getElementById("title").value = S.title;
+    m.innerHTML = gate();
+    wireGate();
+    return;
+  }
+  tabsEl.style.display = "";
+  shareEl.style.display = "";
+
+  document.getElementById("title").value = S.title;
+  document.getElementById("eventCount").textContent = (liveGames().length+1) + " events";
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   if (tab === "board") m.innerHTML = board();
   else if (tab === "golf") m.innerHTML = golf();
   else if (tab === "games") m.innerHTML = games();
   else m.innerHTML = teams();
   wire();
+  const code = document.getElementById("boardCode");
+  if (code) code.textContent = boardId ? "Board " + boardId.slice(0,8) : "";
 }
 
 function plates(v){
@@ -490,12 +690,13 @@ function golf(){
 }
 
 function games(){
-  const game = S.games.find(x => x.id === activeGame) || S.games[0];
+  const live = liveGames();
+  const game = live.find(x => x.id === activeGame) || live[0];
   activeGame = game.id;
   const w = winsOf(game);
   return `<div class="stack">
     <div class="gchips">
-      ${S.games.map(x => `<button class="gchip js-gtab ${x.id===game.id?"on":""}" data-id="${x.id}">${esc(x.name)}</button>`).join("")}
+      ${live.map(x => `<button class="gchip js-gtab ${x.id===game.id?"on":""}" data-id="${x.id}">${esc(x.name)}</button>`).join("")}
     </div>
     <div class="panel">
       <div class="game-head">
@@ -595,22 +796,24 @@ function wire(){
     const v = e.target.value.replace(/[^0-9.]/g,"");
     if (v !== e.target.value) e.target.value = v;
     S.golfScores[e.target.dataset.id] = v;
+    const fld = "golf." + e.target.dataset.id;
     const g = golfPts();
     document.querySelectorAll("[data-pts]").forEach(s => s.textContent = fmt(g[s.dataset.pts]) + " pts");
-    touch();
+    touch(fld);
   });
   document.querySelectorAll(".js-gp").forEach(el => el.oninput = e => {
     S.golfPoints[+e.target.dataset.i] = parseFloat(e.target.value) || 0;
+    const fld = "gp." + e.target.dataset.i;
     const g = golfPts();
     document.querySelectorAll("[data-pts]").forEach(s => s.textContent = fmt(g[s.dataset.pts]) + " pts");
-    touch();
+    touch(fld);
   });
   document.querySelectorAll(".js-gtab").forEach(el => el.onclick = () => { activeGame = el.dataset.id; render(); });
   document.querySelectorAll(".js-win").forEach(el => el.onclick = () => {
     const g = S.games.find(x => x.id === activeGame);
     if (g.results[el.dataset.k] === el.dataset.t) delete g.results[el.dataset.k];
     else g.results[el.dataset.k] = el.dataset.t;
-    touch(); render();
+    touch("g." + activeGame + ".r." + el.dataset.k); render();
   });
   const gn = document.querySelector(".js-gname");
   if (gn) gn.oninput = e => {
@@ -619,29 +822,38 @@ function wire(){
     if (chip) chip.textContent = e.target.value;
     const h = document.querySelector(".wins-h");
     if (h) h.textContent = e.target.value + " wins";
-    touch();
+    touch("g." + activeGame + ".name");
   };
   const rm = document.querySelector(".js-grm");
   if (rm) rm.onclick = () => arm(rm, "Delete?", () => {
-    S.games = S.games.filter(x => x.id !== activeGame);
-    if (!S.games.length) S.games.push({id:"g"+Date.now(), name:"New game", results:{}});
-    activeGame = S.games[0].id; touch(); render();
+    const dead = activeGame;
+    const g = S.games.find(x => x.id === dead);
+    if (g) g.del = true;
+    if (!liveGames().length){
+      const nid = "g" + Date.now();
+      S.games.push({id:nid, name:"New game", del:false, results:{}});
+      touch("g." + nid + ".del", "g." + nid + ".name");
+    }
+    activeGame = liveGames()[0].id;
+    touch("g." + dead + ".del"); render();
   });
   const add = document.getElementById("addGame");
   if (add) add.onclick = () => {
     const inp = document.getElementById("newGame");
     const name = inp.value.trim(); if (!name) { inp.focus(); return; }
     const id = "g" + Date.now();
-    S.games.push({id, name, results:{}});
-    activeGame = id; touch(); render();
+    S.games.push({id, name, del:false, results:{}});
+    activeGame = id; touch("g." + id + ".del", "g." + id + ".name"); render();
   };
   const ng = document.getElementById("newGame");
   if (ng) ng.onkeydown = e => { if (e.key === "Enter") document.getElementById("addGame").click(); };
   document.querySelectorAll(".js-tname").forEach(el => el.oninput = e => {
-    S.teams[+e.target.dataset.i].name = e.target.value; touch();
+    S.teams[+e.target.dataset.i].name = e.target.value;
+    touch("t." + e.target.dataset.i + ".name");
   });
   document.querySelectorAll(".js-player").forEach(el => el.oninput = e => {
-    S.teams[+e.target.dataset.t].players[+e.target.dataset.p] = e.target.value; touch();
+    S.teams[+e.target.dataset.t].players[+e.target.dataset.p] = e.target.value;
+    touch("t." + e.target.dataset.t + ".p." + e.target.dataset.p);
   });
   const pool = document.getElementById("pool");
   if (pool) pool.oninput = e => {
@@ -650,13 +862,13 @@ function wire(){
     const c = document.getElementById("poolCount");
     c.textContent = n + (n===1?" name":" names") + (n===20 ? " — full field" : "");
     c.classList.toggle("full", n===20);
-    touch();
+    touch("pool");
   };
   const pull2 = document.getElementById("pullNames");
   if (pull2) pull2.onclick = () => {
     const all = S.teams.flatMap(t => t.players).filter(Boolean);
     if (!all.length) { poolMsg("No names on the teams yet."); return; }
-    S.pool = all.join("\n"); touch(); render();
+    S.pool = all.join("\n"); touch("pool"); render();
     poolMsg("Loaded " + all.length + " names back into the pool.");
   };
   const draw = document.getElementById("draw");
@@ -676,39 +888,62 @@ function wire(){
         while (b.length < 4) b.push("");
         t.players = b;
       });
-      touch(); render();
+      const flds = ["pool"];
+      S.teams.forEach((t,i) => t.players.forEach((_,j) => flds.push("t."+i+".p."+j)));
+      touch.apply(null, flds); render();
       poolMsg(names.length + " names dealt into " + S.teams.length + " teams.");
     };
     if (filled) arm(draw, "Redraw?", go); else go();
   };
   const rs = document.getElementById("reset");
   if (rs) rs.onclick = () => arm(rs, "Wipe everything?", () => {
-    S = blank(); activeGame = S.games[0].id; touch(); render();
+    const keep = S.V;
+    S = blank();
+    S.V = keep;
+    activeGame = liveGames()[0].id;
+    const flds = ["title","pool"];
+    IDS.forEach(id => flds.push("golf."+id));
+    S.golfPoints.forEach((_,i) => flds.push("gp."+i));
+    S.teams.forEach((t,i) => { flds.push("t."+i+".name"); t.players.forEach((_,j)=>flds.push("t."+i+".p."+j)); });
+    Object.keys(S.V).forEach(f => { if (f.indexOf("g.") === 0) flds.push(f); });
+    S.games.forEach(g => { flds.push("g."+g.id+".del","g."+g.id+".name"); });
+    touch.apply(null, flds); render();
   });
 }
 
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
-document.getElementById("title").oninput = e => { S.title = e.target.value; touch(); };
+document.getElementById("title").oninput = e => { S.title = e.target.value; touch("title"); };
 
 /* ---------------- boot + sync ---------------- */
 let lastSync = 0;
 
 async function sync(){
-  if (!SHARED) return;
-  if (Date.now() - lastEdit < 3000) return;
-  const tag = document.activeElement && document.activeElement.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA") return;
-  const r = await pull();
+  if (!SHARED || gated || flushing) return;
+  const remote = await pull();
   lastSync = Date.now();
-  if (!r) return;
-  if ((r._t || 0) < (S._t || 0)) return;
-  if (JSON.stringify(r) !== JSON.stringify(S)){ S = r; render(); }
+  if (!remote){ netOk = false; setStatus(); return; }
+  netOk = true;
+  const res = merge(S, remote);
+  S = res.state;
+  if (res.changed){
+    saveLocal();
+    if (typing()) needsRender = true; else render();
+  }
+  if (dirty || aheadOf(remote)) flush();
+  else setStatus();
+}
+
+/* Apply any update that arrived while someone was mid-keystroke. */
+function drainRender(){
+  if (needsRender && !typing()){ needsRender = false; render(); }
 }
 
 function tickLive(){
   const el = document.getElementById("liveTime");
   if (!el) return;
   if (!SHARED){ el.textContent = "local"; return; }
+  if (!netOk){ el.textContent = "offline"; return; }
+  if (dirty){ el.textContent = "syncing"; return; }
   if (!lastSync){ el.textContent = "live"; return; }
   const s = Math.round((Date.now() - lastSync) / 1000);
   el.textContent = s < 8 ? "live" : s < 60 ? s + "s ago" : Math.round(s/60) + "m ago";
@@ -743,23 +978,19 @@ function wireShare(){
   if (cached){ const n = normalize(JSON.parse(cached)); if (n) S = n; }
 
   if (DB_URL || boardId){
+    gated = false;
     SHARED = true;
     if (boardId) setBoardId(boardId);
     const remote = await pull();
     if (remote) S = remote;
     else document.getElementById("footNote").textContent = "Couldn't reach the board — retrying.";
   } else {
-    try {
-      setBoardId(await createBoard(S));
-      SHARED = true;
-      shareMsg("New board created — copy the link for the group.");
-    } catch(e){
-      SHARED = false;
-      document.getElementById("footNote").textContent = "Couldn't create a shared board — saving on this device only.";
-    }
+    /* No board ID. Never create one automatically — that would strand an
+       existing tournament. Ask instead. */
+    gated = true;
   }
 
-  activeGame = (S.games[0]||{}).id || "g1";
+  activeGame = (liveGames()[0]||{}).id || "g1";
   lastSync = Date.now();
   if (!SHARED) document.getElementById("liveTime").textContent = "local";
   render();
@@ -769,6 +1000,11 @@ function wireShare(){
     sync();
   };
   setInterval(sync, 3000);
+  setInterval(() => { if (dirty && !flushing) flush(); }, 4000);   // keep retrying until it lands
+  setInterval(drainRender, 700);
+  window.addEventListener("online", () => { netOk = true; sync(); });
+  window.addEventListener("offline", () => { netOk = false; setStatus(); });
+  window.addEventListener("pagehide", () => { if (dirty) flush(); });
   setInterval(tickLive, 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(); });
   window.addEventListener("focus", sync);

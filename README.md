@@ -13,16 +13,19 @@ Installs to the home screen and runs full screen like a real app.
    folder `/ (root)`. Save.
 4. Wait a minute, then open `https://YOUR-NAME.github.io/YOUR-REPO/`
 
-## 2. Share it
+## 2. Start the board and share it
 
-The first time the page opens it creates a shared board and adds an ID to the
-address bar, like `?board=a1b2c3`.
+Open your link. You'll be asked to **start a new board** or **join** one with a
+code. Start one, then tap **Copy share link** and send that link to all 20
+players. Everyone who opens it sees the same scores, refreshing every three
+seconds.
 
-**Tap "Copy share link" and send that link to all 20 players.** Everyone who
-opens it sees the same scores, refreshing every three seconds.
+The board code shows next to the Copy button. **Write it down.** Anyone can get
+back into the tournament by pasting that code into the join box, even if they
+lose the link.
 
-Send the link *with* the `?board=` part. A bare URL creates a brand new empty
-board instead of joining yours.
+The page never creates a board on its own, so a stray visit can't strand your
+tournament.
 
 ## 3. Everyone adds it to their home screen
 
@@ -33,9 +36,9 @@ Tell people to open your link first, then:
 - **Android (Chrome)** — a prompt usually appears. If not: menu (three dots) ->
   **Install app** or **Add to Home Screen**.
 
-It opens full screen with no browser bars. The board ID is remembered on the
-device, so the app rejoins your tournament even though the home screen shortcut
-drops the `?board=` part.
+It opens full screen with no browser bars. Each device remembers its board, so
+the app rejoins your tournament on launch. If it ever asks which board to use,
+paste the code — nothing is lost.
 
 ## Day of
 
@@ -47,8 +50,14 @@ drops the `?board=` part.
 Rename a game by tapping its name. Add games at the bottom of the Games tab;
 they get the same format and the same 4-point ceiling.
 
-The badge in the footer shows how fresh your copy is — tap it to refresh now.
-If two people edit at once the later save wins, so split up who enters what.
+Anyone can enter anything from any phone at any time. Entries merge field by
+field, so two people saving at the same moment can't overwrite each other — if
+you enter a golf score while someone else taps a Beer Dye winner, both stick.
+Only the exact same field edited twice resolves to whoever tapped last.
+
+Lose signal mid-round and the app keeps working. Entries queue on your phone and
+push automatically when you're back in range. The footer badge reads **live**,
+**syncing** or **offline** so you always know where you stand.
 
 ## Files
 
