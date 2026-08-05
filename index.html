@@ -582,7 +582,35 @@ async function push(state){
     headers: {"Content-Type":"application/json","Accept":"application/json"},
     body: JSON.stringify(state)
   });
-  if (!r.ok) throw new Error("HTTP " + r.status);
+  if (!r.ok){
+    let body = "";
+    try { body = await r.text(); } catch(e){}
+    const err = new Error("HTTP " + r.status);
+    err.status = r.status;
+    err.denied = r.status === 401 || r.status === 403 || /permission denied/i.test(body);
+    throw err;
+  }
+}
+
+/* Plain-language check of whether the database will accept writes. */
+async function dbCheck(){
+  if (!DB_URL) return {ok:true};
+  try {
+    const r = await fetch(DB_URL.replace(/\/+$/,"") + "/boards/connection-test.json", {
+      method: "PUT",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({checkedAt: Date.now()})
+    });
+    if (r.ok) return {ok:true};
+    let body = ""; try { body = await r.text(); } catch(e){}
+    if (r.status === 401 || r.status === 403 || /permission denied/i.test(body))
+      return {ok:false, why:"The database is refusing writes. In Firebase open Realtime Database \u2192 Rules and publish the rule from the README."};
+    if (r.status === 404)
+      return {ok:false, why:"That database URL doesn't exist. Check it in the Firebase console."};
+    return {ok:false, why:"The database replied with an error (" + r.status + ")."};
+  } catch(e){
+    return {ok:false, why:"Couldn't reach the database at all \u2014 check your connection."};
+  }
 }
 
 /* Creates a new shared board and returns its ID. */
@@ -689,8 +717,10 @@ function gate(){
           c ? " This device has saved scores — they'll be carried over." : ""}</p>
         <div class="add-row">
           <input class="text-input" id="newWord" placeholder="Choose a keyword" autocapitalize="none" autocorrect="off">
-          <button class="ghost" id="newBtn">Create</button>
+          <button class="solid" id="newBtn">Create</button>
         </div>
+        <div class="pool-msg" id="newMsg"></div>
+        <div class="pool-bar"><button class="ghost" id="testBtn">Test connection</button></div>
       </div>
     </div>`;
   }
@@ -747,16 +777,30 @@ function wireGate(){
     render();
   };
 
+  const nmsg = t => {
+    const el = document.getElementById("newMsg") || document.getElementById("gateMsg");
+    if (el) el.textContent = t;
+  };
+
   const start = async (useCache) => {
     const c = useCache ? cachedState() : null;
     if (c) S = c; else S = blank();
     try {
       if (BYWORD){
-        const word = cleanWord(document.getElementById("newWord").value);
-        if (!word){ msg("Pick a keyword first."); return; }
+        const raw = document.getElementById("newWord").value;
+        const word = cleanWord(raw);
+        if (!word){
+          nmsg(raw.trim() ? "Use letters, numbers and dashes only." : "Type a keyword first.");
+          return;
+        }
+        nmsg("Creating \u201c" + word + "\u201d\u2026");
         boardId = word;
         const exists = await pull();
-        if (exists){ msg("\u201c" + word + "\u201d is already in use. Open it above, or pick another word."); boardId = ""; return; }
+        if (exists){
+          nmsg("\u201c" + word + "\u201d already exists. Type it in the box above to open it, or pick another word.");
+          boardId = "";
+          return;
+        }
         await push(S);
         setBoardId(word);
       } else {
@@ -765,10 +809,20 @@ function wireGate(){
       SHARED = true; gated = false;
       activeGame = (liveGames()[0]||{}).id || "g1";
       render();
-      shareMsg("New board created — copy the link for the group.");
+      shareMsg(BYWORD ? "Board \u201c" + boardId + "\u201d is live. Send that word to your captains." : "New board created — copy the link for the group.");
     } catch(e){
-      msg("Couldn't reach the score service. Check your connection and try again.");
+      boardId = "";
+      nmsg(e && e.denied
+        ? "The database is refusing writes. In Firebase open Realtime Database \u2192 Rules and publish the rule from the README."
+        : "Couldn't save the new board (" + ((e && e.message) || "network error") + "). Tap Test connection.");
     }
+  };
+
+  const tb = document.getElementById("testBtn");
+  if (tb) tb.onclick = async () => {
+    nmsg("Checking\u2026");
+    const r = await dbCheck();
+    nmsg(r.ok ? "Database is connected and accepting writes. You're good to create a board." : r.why);
   };
   document.getElementById("newBtn").onclick = () => start(true);
   const ne = document.getElementById("newEmptyBtn");
