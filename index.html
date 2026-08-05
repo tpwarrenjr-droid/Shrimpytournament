@@ -455,6 +455,32 @@ function endpoint(){
 }
 
 /* Remote stores can drop empty objects and nulls, so rebuild anything missing. */
+/* Firebase forbids . $ # [ ] and / in key names, and every field-tracking key
+   uses dots. Swap them for ~ on the way out, back on the way in. */
+const BAD_KEY = /[.$#\[\]\/]/;
+function encodeV(V){
+  const o = {};
+  for (const k in V) o[k.replace(/\./g, "~")] = V[k];
+  return o;
+}
+function decodeV(V){
+  const o = {};
+  for (const k in V) o[k.replace(/~/g, ".")] = V[k];
+  return o;
+}
+
+/* Belt and braces: catch any key the database would reject before sending. */
+function badKeys(obj, path, out){
+  out = out || []; path = path || "";
+  if (!obj || typeof obj !== "object") return out;
+  if (Array.isArray(obj)){ obj.forEach((v,i) => badKeys(v, path+"["+i+"]", out)); return out; }
+  for (const k in obj){
+    if (BAD_KEY.test(k)) out.push(path + "/" + k);
+    badKeys(obj[k], path + "/" + k, out);
+  }
+  return out;
+}
+
 function toArr(v){
   if (Array.isArray(v)) return v;
   if (v && typeof v === "object"){
@@ -486,7 +512,7 @@ function normalize(x){
       winPts: Number(g.winPts) >= 0 ? Number(g.winPts) : 4,
       results: g.results || {}
     })),
-    V: (x.V && typeof x.V === "object") ? x.V : {}
+    V: (x.V && typeof x.V === "object") ? decodeV(x.V) : {}
   };
   if (!out.games.length) out.games = b.games;
   return out;
@@ -577,10 +603,21 @@ async function push(state){
     localStorage.setItem(KEY, JSON.stringify(state));
     return;
   }
+  const payload = DB_URL
+    ? Object.assign({}, state, {V: encodeV(state.V || {})})
+    : state;
+  if (DB_URL){
+    const bad = badKeys(payload);
+    if (bad.length){
+      const err = new Error("Invalid field name: " + bad[0]);
+      err.badKey = true;
+      throw err;
+    }
+  }
   const r = await fetch(url, {
     method: "PUT",
     headers: {"Content-Type":"application/json","Accept":"application/json"},
-    body: JSON.stringify(state)
+    body: JSON.stringify(payload)
   });
   if (!r.ok){
     let body = "";
@@ -814,7 +851,9 @@ function wireGate(){
       boardId = "";
       nmsg(e && e.denied
         ? "The database is refusing writes. In Firebase open Realtime Database \u2192 Rules and publish the rule from the README."
-        : "Couldn't save the new board (" + ((e && e.message) || "network error") + "). Tap Test connection.");
+        : e && e.badKey
+          ? "The board contains a field name the database won't accept (" + e.message + ")."
+          : "Couldn't save the new board (" + ((e && e.message) || "network error") + "). Tap Test connection.");
     }
   };
 
