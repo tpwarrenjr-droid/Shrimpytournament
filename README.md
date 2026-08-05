@@ -44,8 +44,12 @@ paste the code — nothing is lost.
 
 - **Teams** — paste the 20 names, hit Draw teams.
 - **Golf** — enter each team's scramble total. 4 / 3 / 2 / 1 / 0 by finish.
-- **Games** — tap winners. Round robin, 1 point per win, 4 max per game.
+- **Games** — a five-round schedule per game. Each round has two matches and one
+  team sitting out; every team plays the other four exactly once. Tap the winner
+  after each match. "Still to play" shows who each team still owes.
 - **Board** — the running total.
+
+Tap **How to use** at the top for the captain's instructions, in the app.
 
 Rename a game by tapping its name. Add games at the bottom of the Games tab;
 they get the same format and the same 4-point ceiling.

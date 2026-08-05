@@ -119,6 +119,32 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-
 .side.win{background:linear-gradient(180deg,#E8BE41,#B98D18);color:#1A1206;border-color:#B98D18;font-weight:500}
 .side.lose{opacity:.42}
 .vs{display:flex;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mute);letter-spacing:.1em}
+.round{border:1px solid rgba(27,92,70,.55);border-radius:2px;padding:11px 10px 9px;margin-bottom:9px;
+  background:rgba(0,0,0,.16)}
+.round-now{border-color:var(--brass);background:rgba(212,166,42,.07);box-shadow:inset 3px 0 0 var(--brass)}
+.round-done{opacity:.62}
+.round-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.round-n{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--chalk)}
+.round-tag{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.round-now .round-tag{color:var(--brass)}
+.bye{margin-top:7px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--mute)}
+.owed-row{display:flex;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid rgba(27,92,70,.35)}
+.owed-row:last-child{border-bottom:0}
+.owed-name{width:38%;font-family:'Oswald',sans-serif;font-size:13px;text-transform:uppercase;letter-spacing:.04em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.owed-list{flex:1;font-size:12.5px;color:var(--chalk);line-height:1.45}
+.owed-list.clear{color:var(--mute);font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.08em}
+
+/* help */
+.help-btn{background:transparent;border:1px solid rgba(27,92,70,.7);color:var(--mute);border-radius:1px;
+  padding:9px 13px;cursor:pointer;font-family:'Oswald',sans-serif;font-size:12px;
+  letter-spacing:.1em;text-transform:uppercase}
+.help-btn:hover,.help-btn.on{border-color:var(--brass);color:var(--brass)}
+.help ol{margin:0;padding-left:20px}
+.help li{font-size:13.5px;line-height:1.65;margin-bottom:9px;color:var(--chalk)}
+.help li b{color:var(--brass);font-weight:500}
+.help .last{color:var(--mute);font-size:12.5px;line-height:1.55;margin:12px 0 0}
+
 .wins-panel{margin-top:18px;border-top:1px solid rgba(27,92,70,.5);padding-top:14px}
 .wins-h{margin:0 0 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
   text-transform:uppercase;color:var(--mute);font-weight:500}
@@ -204,6 +230,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-
 
   <div class="share-row">
     <button class="solid" id="share">Copy share link</button>
+    <button class="help-btn" id="helpBtn">How to use</button>
     <span class="code" id="boardCode"></span>
     <span class="share-msg" id="shareMsg"></span>
   </div>
@@ -234,6 +261,29 @@ const MATCHUPS = (() => {
   const o = [];
   for (let i=0;i<IDS.length;i++) for (let j=i+1;j<IDS.length;j++) o.push({key:IDS[i]+"|"+IDS[j], a:IDS[i], b:IDS[j]});
   return o;
+})();
+
+/* Circle method: 5 rounds of 2 matches, every team sits out exactly once
+   and all 10 matchups happen exactly once. */
+const ROUNDS = (() => {
+  const BYE = 5;
+  let arr = [0,1,2,3,4,BYE];
+  const rounds = [];
+  for (let r = 0; r < 5; r++){
+    const matches = []; let bye = null;
+    for (let i = 0; i < 3; i++){
+      const a = arr[i], b = arr[5-i];
+      if (a === BYE) bye = b;
+      else if (b === BYE) bye = a;
+      else {
+        const lo = Math.min(a,b), hi = Math.max(a,b);
+        matches.push({key: IDS[lo]+"|"+IDS[hi], a: IDS[lo], b: IDS[hi]});
+      }
+    }
+    rounds.push({n: r+1, matches, bye: IDS[bye]});
+    arr = [arr[0], arr[5], ...arr.slice(1,5)];
+  }
+  return rounds;
 })();
 
 function blank(){
@@ -606,6 +656,23 @@ function wireGate(){
 }
 
 /* ---------------- render ---------------- */
+let helpOpen = false;
+
+function helpPanel(){
+  return `<div class="panel help">
+    <h3 class="panel-h">Captain's job</h3>
+    <ol>
+      <li><b>Install it.</b> iPhone: Share button, then Add to Home Screen (must be Safari). Android: menu, then Install app.</li>
+      <li><b>Check your roster</b> on the Teams tab. Fix any spelling — don't redraw the teams.</li>
+      <li><b>After your golf round,</b> go to Golf and enter your team's total scramble strokes in your own row.</li>
+      <li><b>For each beer game,</b> open Games, pick the game, find your round and tap the team that won. Tapping again undoes it.</li>
+      <li><b>Check "Still to play"</b> on the Games tab to see who you still owe a match.</li>
+      <li><b>Board</b> is the running standings. Everything updates on everyone's phone within a few seconds.</li>
+    </ol>
+    <p class="last">Only enter your own team's results. Don't touch Reset — it wipes the tournament for all 20 players.</p>
+  </div>`;
+}
+
 function render(){
   const m = document.getElementById("main");
   const tabsEl = document.querySelector(".tabs");
@@ -625,10 +692,12 @@ function render(){
   document.getElementById("title").value = S.title;
   document.getElementById("eventCount").textContent = (liveGames().length+1) + " events";
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
-  if (tab === "board") m.innerHTML = board();
-  else if (tab === "golf") m.innerHTML = golf();
-  else if (tab === "games") m.innerHTML = games();
-  else m.innerHTML = teams();
+  const body = tab === "board" ? board()
+             : tab === "golf"  ? golf()
+             : tab === "games" ? games()
+             : teams();
+  m.innerHTML = (helpOpen ? helpPanel() : "") + body;
+  document.getElementById("helpBtn").classList.toggle("on", helpOpen);
   wire();
   const code = document.getElementById("boardCode");
   if (code) code.textContent = boardId ? "Board " + boardId.slice(0,8) : "";
@@ -693,38 +762,84 @@ function games(){
   const live = liveGames();
   const game = live.find(x => x.id === activeGame) || live[0];
   activeGame = game.id;
+  const res = game.results || {};
   const w = winsOf(game);
-  return `<div class="stack">
-    <div class="gchips">
-      ${live.map(x => `<button class="gchip js-gtab ${x.id===game.id?"on":""}" data-id="${x.id}">${esc(x.name)}</button>`).join("")}
-    </div>
-    <div class="panel">
-      <div class="game-head">
-        <input class="game-name js-gname" value="${esc(game.name)}" aria-label="Game name">
-        <button class="ghost js-grm">Remove</button>
+
+  const rounds = ROUNDS.map(r => ({
+    n: r.n, bye: r.bye, matches: r.matches,
+    done: r.matches.every(m => res[m.key])
+  }));
+  const upNext = rounds.findIndex(r => !r.done);
+  const left = MATCHUPS.filter(m => !res[m.key]).length;
+
+  const roundHtml = rounds.map((r,i) => {
+    const state = r.done ? "done" : (i === upNext ? "now" : "later");
+    const tag = r.done ? "Played" : (i === upNext ? "Up next" : "Waiting");
+    return `<div class="round round-${state}">
+      <div class="round-head">
+        <span class="round-n">Round ${r.n}</span>
+        <span class="round-tag">${tag}</span>
       </div>
-      <p class="panel-sub">Tap the name above to rename this game. Every team plays every other team once — tap the winner, tap again to undo.</p>
-      ${MATCHUPS.map(m => {
-        const win = game.results[m.key];
+      ${r.matches.map(m => {
+        const win = res[m.key];
         return `<div class="match">
           <button class="side js-win ${win===m.a?"win":""} ${win===m.b?"lose":""}" data-k="${m.key}" data-t="${m.a}">${esc(teamName(m.a))}</button>
           <span class="vs">v</span>
           <button class="side js-win ${win===m.b?"win":""} ${win===m.a?"lose":""}" data-k="${m.key}" data-t="${m.b}">${esc(teamName(m.b))}</button>
         </div>`;
       }).join("")}
-      <div class="wins-panel">
-        <h4 class="wins-h">${esc(game.name)} wins</h4>
-        ${S.teams.map(t => `
-          <div class="wins-row">
-            <span class="wins-name">${esc(t.name)}</span>
-            ${tally(w[t.id])}
-            <span class="wins-num">${w[t.id]}/4</span>
-          </div>`).join("")}
-      </div>
+      <div class="bye">Sitting out: ${esc(teamName(r.bye))}</div>
+    </div>`;
+  }).join("");
+
+  const owed = S.teams.map(t => {
+    const opp = MATCHUPS.filter(m => (m.a===t.id || m.b===t.id) && !res[m.key])
+                        .map(m => teamName(m.a === t.id ? m.b : m.a));
+    return {name: t.name, opp};
+  });
+
+  return `<div class="stack">
+    <div class="gchips">
+      ${live.map(x => `<button class="gchip js-gtab ${x.id===game.id?"on":""}" data-id="${x.id}">${esc(x.name)}</button>`).join("")}
     </div>
+
+    <div class="panel">
+      <div class="game-head">
+        <input class="game-name js-gname" value="${esc(game.name)}" aria-label="Game name">
+        <button class="ghost js-grm">Remove</button>
+      </div>
+      <p class="panel-sub">${left === 0
+        ? "Every match is in. This game is finished."
+        : "Find your round, play the match, then tap the team that won. Tap again to undo."}</p>
+      ${roundHtml}
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-h">Still to play</h3>
+      <p class="panel-sub">${left === 0 ? "Nothing left in " + esc(game.name) + "."
+        : left + (left === 1 ? " match" : " matches") + " left in " + esc(game.name) + "."}</p>
+      ${owed.map(o => `
+        <div class="owed-row">
+          <span class="owed-name">${esc(o.name)}</span>
+          <span class="owed-list ${o.opp.length ? "" : "clear"}">${
+            o.opp.length ? esc(o.opp.join(", ")) : "Done — all four played"
+          }</span>
+        </div>`).join("")}
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-h">${esc(game.name)} wins</h3>
+      ${S.teams.map(t => `
+        <div class="wins-row">
+          <span class="wins-name">${esc(t.name)}</span>
+          ${tally(w[t.id])}
+          <span class="wins-num">${w[t.id]}/4</span>
+        </div>`).join("")}
+    </div>
+
     <div class="panel">
       <h3 class="panel-h">Add a game</h3>
-      <p class="panel-sub">New games get the same 10-matchup round robin and are worth up to 4 points, same as everything else.</p>
+      <p class="panel-sub">New games get the same five-round schedule and are worth up to 4 points, same as everything else.</p>
       <div class="add-row">
         <input class="text-input" id="newGame" placeholder="Cornhole, ladder golf, dizzy bat…">
         <button class="solid" id="addGame">Add</button>
@@ -912,6 +1027,7 @@ function wire(){
 }
 
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+document.getElementById("helpBtn").onclick = () => { helpOpen = !helpOpen; render(); };
 document.getElementById("title").oninput = e => { S.title = e.target.value; touch("title"); };
 
 /* ---------------- boot + sync ---------------- */
