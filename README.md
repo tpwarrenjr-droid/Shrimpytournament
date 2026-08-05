@@ -64,12 +64,18 @@ paste the code — nothing is lost.
 
 - **Teams** — paste the 20 names, hit Draw teams.
 - **Golf** — enter each team's scramble total. 4 / 3 / 2 / 1 / 0 by finish.
-- **Games** — each game has its own schedule and its own format. Set **teams per
-  match** (2-5), **rounds**, and **points per win** on the Format panel. Two
-  teams per match gives head-to-head with a bye; five gives one match with
-  everyone in it. The panel tells you the most a team can score, so you can
-  balance games against golf. Changing teams-per-match clears that game's
-  results, since the schedule changes shape.
+- **Games** — each game has its own schedule and format. Set **teams per match**
+  (2-5) and **times through** on the Format panel. Every schedule is balanced:
+  all five teams play the same number of matches and face every other team at
+  least once. 2 per match is head-to-head, 10 matches. 5 per match is one match
+  with everyone in it.
+- **Rules** sit at the top of the Golf tab and of each game. Tap **Add rules**, type them, tap
+  **Done**. Everyone sees them on their own phone, so captains stop asking.
+- **Game points** are awarded on total wins, not per win — most wins takes the
+  top of the ladder however many wins that was. Editable per game, default
+  4/3/2/1/0. Teams level on wins split the places they take up.
+- Changing teams-per-match clears that game's results, since the schedule
+  changes shape. Set formats before the day.
 - **Board** — the running total.
 
 Tap **How to use** at the top for the captain's instructions, in the app.

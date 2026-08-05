@@ -122,6 +122,19 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-
 .lineup{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
 .lineup .side{flex:1 1 calc(50% - 3px);min-width:0}
 .lineup .side:only-child{flex-basis:100%}
+.rules-h{flex:1;font-family:'Oswald',sans-serif;font-size:15px;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--brass)}
+.rules-body{white-space:pre-wrap;font-size:13.5px;line-height:1.6;color:var(--chalk)}
+.rules-area{width:100%;min-height:150px;resize:vertical;background:rgba(0,0,0,.35);
+  border:1px solid var(--edge);border-radius:1px;color:var(--chalk);padding:11px;
+  font-family:'Archivo',sans-serif;font-size:13.5px;line-height:1.6}
+.rules-area:focus{outline:none;border-color:var(--brass)}
+.gstand{padding:9px 0;border-bottom:1px solid rgba(27,92,70,.35)}
+.gstand:last-child{border-bottom:0}
+.gstand-top{display:flex;align-items:center;gap:10px}
+.gstand-pts{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;color:var(--brass);
+  min-width:34px;text-align:right}
+.gstand .owed-list{margin-top:5px;font-size:11.5px;color:var(--mute)}
 .fmt-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(27,92,70,.35)}
 .fmt-label{flex:1;font-size:13px;color:var(--chalk)}
 .seg{display:flex;gap:3px}
@@ -302,35 +315,58 @@ const ROUNDS = (() => {
   return rounds;
 })();
 
-/* Builds a game's schedule from its format.
-   2 teams per match  -> circle-method round robin, 2 matches + 1 bye each round.
-   3-5 teams per match -> one match per round, the lineup rotating so a
-   different team sits out each time. */
+/* Balanced designs for 5 teams. One match per round. Every team plays the
+   same number of matches and meets every other team at least once.
+     2 per match -> 10 matches, each team plays 4, every pair exactly once
+     3 per match ->  5 matches, each team plays 3, every pair at least once
+     4 per match ->  5 matches, each team plays 4, every pair at least once
+     5 per match ->  1 match,   everyone plays everyone                     */
+function baseBlocks(k){
+  const I = [0,1,2,3,4];
+  if (k >= 5) return [[0,1,2,3,4]];
+  if (k === 4) return I.map(out => I.filter(x => x !== out));
+  if (k === 3) return I.map(i => [i, (i+1)%5, (i+2)%5]);
+  /* k === 2: full round robin, ordered by the circle method so no team plays
+     twice in a row where it can be avoided. */
+  const out = [];
+  ROUNDS.forEach(r => r.matches.forEach(m => out.push([IDS.indexOf(m.a), IDS.indexOf(m.b)])));
+  return out;
+}
+
 function scheduleFor(game){
   const k = Math.min(5, Math.max(2, game.teams || 5));
-  const R = Math.min(12, Math.max(1, game.rounds || 1));
+  const cycles = Math.min(4, Math.max(1, game.cycles || 1));
+  const base = baseBlocks(k);
   const out = [];
-  for (let r = 0; r < R; r++){
-    if (k === 2){
-      const base = ROUNDS[r % 5];
+  let n = 1;
+  for (let c = 0; c < cycles; c++){
+    base.forEach((block, bi) => {
+      const teams = block.map(i => IDS[i]);
       out.push({
-        n: r+1,
-        matches: base.matches.map((m,i) => ({key: "r"+(r+1)+"m"+i, teams: [m.a, m.b]})),
-        byes: [base.bye]
+        n: n++,
+        matches: [{key: "c" + c + "m" + bi, teams}],
+        byes: IDS.filter(id => teams.indexOf(id) < 0)
       });
-    } else {
-      const order = IDS.map((_,i) => IDS[(i + r) % 5]);
-      out.push({
-        n: r+1,
-        matches: [{key: "r"+(r+1)+"m0", teams: order.slice(0, k)}],
-        byes: order.slice(k)
-      });
-    }
+    });
   }
   return out;
 }
 
-/* How many matches this team is scheduled for, and which are unplayed. */
+/* Matches each team is scheduled for — identical for every team by design. */
+function matchesEach(game){
+  const sched = scheduleFor(game);
+  let n = 0;
+  sched.forEach(r => r.matches.forEach(m => { if (m.teams.indexOf(IDS[0]) > -1) n++; }));
+  return n;
+}
+
+function playedCount(game){
+  const res = game.results || {};
+  let n = 0;
+  scheduleFor(game).forEach(r => r.matches.forEach(m => { if (res[m.key]) n++; }));
+  return n;
+}
+
 function pending(game, teamId){
   const res = game.results || {};
   const out = [];
@@ -340,17 +376,37 @@ function pending(game, teamId){
   return out;
 }
 
+/* Rank teams and hand out the points ladder. Ties split the places they take
+   up — so most wins earns the top points however many wins that was. */
+function placePoints(vals, pts, higherBetter){
+  const out = {}; IDS.forEach(id => out[id] = 0);
+  const arr = IDS.map(id => ({id, v: vals[id] || 0}));
+  arr.sort((a,b) => higherBetter ? b.v - a.v : a.v - b.v);
+  let slot = 0, i = 0;
+  while (i < arr.length){
+    let j = i;
+    while (j+1 < arr.length && arr[j+1].v === arr[i].v) j++;
+    const n = j - i + 1;
+    let sum = 0;
+    for (let q = 0; q < n; q++) sum += (pts[slot+q] != null ? pts[slot+q] : 0);
+    for (let q = i; q <= j; q++) out[arr[q].id] = sum / n;
+    slot += n; i = j + 1;
+  }
+  return out;
+}
+
 function blank(){
   return {
     title: "The Scramble & Sauce Classic",
     teams: IDS.map((id,i)=>({id, name:"Team "+(i+1), players:["","","",""]})),
     golfScores: {t1:"",t2:"",t3:"",t4:"",t5:""},
     golfPoints: [4,3,2,1,0],
+    golfRules: "",
     pool: "",
     games: [
-      {id:"g1", name:"Beer Dye",  del:false, teams:5, rounds:1, winPts:4, results:{}},
-      {id:"g2", name:"Beer Pong", del:false, teams:5, rounds:1, winPts:4, results:{}},
-      {id:"g3", name:"Flip Cup",  del:false, teams:5, rounds:1, winPts:4, results:{}}
+      {id:"g1", name:"Beer Dye",  del:false, teams:2, cycles:1, pts:[4,3,2,1,0], rules:"", results:{}},
+      {id:"g2", name:"Beer Pong", del:false, teams:2, cycles:1, pts:[4,3,2,1,0], rules:"", results:{}},
+      {id:"g3", name:"Flip Cup",  del:false, teams:5, cycles:1, pts:[4,3,2,1,0], rules:"", results:{}}
     ],
     /* V maps each individual field to the time it last changed. Merging on
        these instead of the whole document is what lets five phones enter
@@ -393,9 +449,13 @@ function winsOf(game){
 }
 function standings(){
   const g = golfPts();
-  const per = liveGames().map(x => ({game:x, wins:winsOf(x), pts:(x.winPts != null ? x.winPts : 4)}));
+  const per = liveGames().map(x => {
+    const wins = winsOf(x);
+    const started = playedCount(x) > 0;
+    return {game:x, wins, pts: started ? placePoints(wins, x.pts, true) : {}};
+  });
   const rows = S.teams.map(t => {
-    const gw = per.map(p => ({id:p.game.id, name:p.game.name, wins:p.wins[t.id], pts:p.wins[t.id]*p.pts}));
+    const gw = per.map(p => ({id:p.game.id, name:p.game.name, wins:p.wins[t.id], pts:(p.pts[t.id] || 0)}));
     const wt = gw.reduce((s,x) => s+x.pts, 0);
     const raw = parseFloat(S.golfScores[t.id]);
     return {team:t, golf:g[t.id], score:isNaN(raw)?null:raw, gw, wt, total:g[t.id]+wt};
@@ -495,6 +555,7 @@ function normalize(x){
   const out = {
     title: typeof x.title === "string" ? x.title : b.title,
     pool: typeof x.pool === "string" ? x.pool : "",
+    golfRules: typeof x.golfRules === "string" ? x.golfRules : "",
     golfPoints: toArr(x.golfPoints) ? toArr(x.golfPoints).map(n => Number(n)||0) : b.golfPoints,
     golfScores: Object.assign({t1:"",t2:"",t3:"",t4:"",t5:""}, x.golfScores || {}),
     teams: IDS.map((id,i) => {
@@ -508,8 +569,9 @@ function normalize(x){
       name: g.name || ("Game "+(i+1)),
       del: !!g.del,
       teams: Math.min(5, Math.max(2, Number(g.teams) || 5)),
-      rounds: Math.min(12, Math.max(1, Number(g.rounds) || 1)),
-      winPts: Number(g.winPts) >= 0 ? Number(g.winPts) : 4,
+      cycles: Math.min(4, Math.max(1, Number(g.cycles) || 1)),
+      pts: toArr(g.pts) ? toArr(g.pts).map(n => Number(n)||0) : [4,3,2,1,0],
+      rules: typeof g.rules === "string" ? g.rules : "",
       results: g.results || {}
     })),
     V: (x.V && typeof x.V === "object") ? decodeV(x.V) : {}
@@ -532,6 +594,7 @@ function merge(local, remote){
 
   take("title", () => local.title = remote.title);
   take("pool",  () => local.pool  = remote.pool);
+  take("golfRules", () => local.golfRules = remote.golfRules || "");
   for (let i = 0; i < 5; i++) take("gp."+i, () => local.golfPoints[i] = remote.golfPoints[i]);
   IDS.forEach(id => take("golf."+id, () => local.golfScores[id] = remote.golfScores[id]));
 
@@ -560,8 +623,9 @@ function merge(local, remote){
     }
     take("g."+rg.id+".name", () => g.name = rg.name);
     take("g."+rg.id+".del",  () => g.del  = !!rg.del);
-    take("g."+rg.id+".fmt",  () => { g.teams = rg.teams; g.rounds = rg.rounds; });
-    take("g."+rg.id+".pts",  () => g.winPts = rg.winPts);
+    take("g."+rg.id+".fmt",  () => { g.teams = rg.teams; g.cycles = rg.cycles; });
+    take("g."+rg.id+".pts",  () => g.pts = (toArr(rg.pts) || [4,3,2,1,0]).slice());
+    take("g."+rg.id+".rules",() => g.rules = rg.rules || "");
     take("g."+rg.id+".wipe", () => g.results = {});
     const keys = new Set(Object.keys(g.results||{}).concat(Object.keys(rg.results||{})));
     keys.forEach(k => take("g."+rg.id+".r."+k, () => {
@@ -870,6 +934,8 @@ function wireGate(){
 
 /* ---------------- render ---------------- */
 let helpOpen = false;
+let editRules = false;
+let editGolfRules = false;
 
 function helpPanel(){
   return `<div class="panel help">
@@ -878,7 +944,9 @@ function helpPanel(){
       <li><b>Open the board.</b> Type the tournament keyword when the app asks. That's how you find it — no link to keep track of.</li>
       <li><b>Install it.</b> iPhone: Share button, then Add to Home Screen (must be Safari). Android: menu, then Install app.</li>
       <li><b>Check your roster</b> on the Teams tab. Fix any spelling — don't redraw the teams.</li>
+      <li><b>Read the golf rules</b> at the top of the Golf tab before you tee off.</li>
       <li><b>After your golf round,</b> go to Golf and enter your team's total scramble strokes in your own row.</li>
+      <li><b>Read the rules</b> at the top of each game on the Games tab before you play it.</li>
       <li><b>For each beer game,</b> open Games, pick the game, find your round and tap the team that won. Tapping again undoes it.</li>
       <li><b>Check "Still to play"</b> on the Games tab to see who you still owe a match.</li>
       <li><b>Board</b> is the running standings. Everything updates on everyone's phone within a few seconds.</li>
@@ -950,6 +1018,18 @@ function golf(){
   const labels = ["1st","2nd","3rd","4th","5th"];
   return `<div class="stack">
     <div class="panel">
+      <div class="game-head">
+        <span class="rules-h">Golf rules</span>
+        <button class="ghost js-goredit">${editGolfRules ? "Done" : (S.golfRules ? "Edit" : "Add rules")}</button>
+      </div>
+      ${editGolfRules
+        ? `<textarea class="rules-area js-gorules" placeholder="Scramble format, tee boxes, mulligans, gimmes, pace of play\u2026" aria-label="Golf rules">${esc(S.golfRules || "")}</textarea>`
+        : (S.golfRules
+            ? `<div class="rules-body">${esc(S.golfRules)}</div>`
+            : `<p class="panel-sub">No rules posted yet.</p>`)}
+    </div>
+
+    <div class="panel">
       <h3 class="panel-h">Scramble totals</h3>
       <p class="panel-sub">Enter each team's total strokes. Lowest total takes the most points.</p>
       ${S.teams.map(t => `
@@ -978,20 +1058,21 @@ function games(){
   activeGame = game.id;
   const res = game.results || {};
   const w = winsOf(game);
-  const wp = game.winPts != null ? game.winPts : 4;
   const sched = scheduleFor(game);
+  const started = playedCount(game) > 0;
+  const pp = started ? placePoints(w, game.pts, true) : {};
+  const per = matchesEach(game);
 
   const rounds = sched.map(r => ({...r, done: r.matches.every(m => res[m.key])}));
   const upNext = rounds.findIndex(r => !r.done);
-  let left = 0;
-  sched.forEach(r => r.matches.forEach(m => { if (!res[m.key]) left++; }));
+  const left = sched.length - playedCount(game);
 
   const roundHtml = rounds.map((r,i) => {
     const state = r.done ? "done" : (i === upNext ? "now" : "later");
     const tag = r.done ? "Played" : (i === upNext ? "Up next" : "Waiting");
     return `<div class="round round-${state}">
       <div class="round-head">
-        <span class="round-n">Round ${r.n}</span>
+        <span class="round-n">Match ${r.n}</span>
         <span class="round-tag">${tag}</span>
       </div>
       ${r.matches.map(m => {
@@ -1002,15 +1083,26 @@ function games(){
                     data-k="${m.key}" data-t="${id}">${esc(teamName(id))}</button>`).join("")}
         </div>`;
       }).join("")}
-      ${r.byes.length ? `<div class="bye">Sitting out: ${r.byes.map(b=>esc(teamName(b))).join(", ")}</div>` : ""}
     </div>`;
   }).join("");
 
-  const owed = S.teams.map(t => ({name: t.name, list: pending(game, t.id)}));
+  const labels = ["Most wins","2nd","3rd","4th","Fewest"];
 
   return `<div class="stack">
     <div class="gchips">
       ${live.map(x => `<button class="gchip js-gtab ${x.id===game.id?"on":""}" data-id="${x.id}">${esc(x.name)}</button>`).join("")}
+    </div>
+
+    <div class="panel">
+      <div class="game-head">
+        <span class="rules-h">${esc(game.name)} rules</span>
+        <button class="ghost js-redit">${editRules ? "Done" : (game.rules ? "Edit" : "Add rules")}</button>
+      </div>
+      ${editRules
+        ? `<textarea class="rules-area js-rules" placeholder="How this game is played, what counts as a win, house rules\u2026" aria-label="Rules for this game">${esc(game.rules || "")}</textarea>`
+        : (game.rules
+            ? `<div class="rules-body">${esc(game.rules)}</div>`
+            : `<p class="panel-sub">No rules posted yet.</p>`)}
     </div>
 
     <div class="panel">
@@ -1026,13 +1118,6 @@ function games(){
 
     <div class="panel">
       <h3 class="panel-h">Format</h3>
-      <p class="panel-sub">${game.teams >= 5
-        ? "All five teams play each round together — one winner per round."
-        : game.teams === 2
-          ? "Head to head. Two matches a round, one team sitting out."
-          : game.teams + " teams face off each round; the rest sit out."}
-        Winning is worth ${fmt(wp)} ${wp === 1 ? "point" : "points"}.</p>
-
       <div class="fmt-row">
         <span class="fmt-label">Teams per match</span>
         <div class="seg">
@@ -1040,64 +1125,59 @@ function games(){
         </div>
       </div>
       <div class="fmt-row">
-        <span class="fmt-label">Rounds</span>
-        <input class="fmt-input js-frounds" inputmode="numeric" value="${game.rounds}" aria-label="Rounds in this game">
+        <span class="fmt-label">Times through</span>
+        <div class="seg">
+          ${[1,2,3].map(n => `<button class="seg-b js-fcyc ${game.cycles===n?"on":""}" data-n="${n}">${n}</button>`).join("")}
+        </div>
       </div>
-      <div class="fmt-row">
-        <span class="fmt-label">Points per win</span>
-        <input class="fmt-input js-fpts" inputmode="decimal" value="${wp}" aria-label="Points for winning a match">
-      </div>
-      <p class="fmt-note">Most a team can score here: ${fmt(maxFor(game))} points.</p>
+      <p class="fmt-note">${sched.length} ${sched.length === 1 ? "match" : "matches"} total &middot;
+        every team plays ${per} ${per === 1 ? "match" : "matches"} &middot;
+        ${game.teams === 5 ? "everyone in every match" : "every team faces every other team" + (game.teams === 2 ? " exactly once" : " at least once")}.</p>
     </div>
 
     <div class="panel">
-      <h3 class="panel-h">Still to play</h3>
-      <p class="panel-sub">${left === 0 ? "Nothing left in " + esc(game.name) + "."
-        : left + (left === 1 ? " match" : " matches") + " left in " + esc(game.name) + "."}</p>
-      ${owed.map(o => `
-        <div class="owed-row">
-          <span class="owed-name">${esc(o.name)}</span>
-          <span class="owed-list ${o.list.length ? "" : "clear"}">${
-            o.list.length
-              ? esc(o.list.map(x => game.teams === 2
-                  ? "R" + x.round + " v " + teamName(x.teams.find(id => teamName(id) !== o.name) || x.teams[0])
-                  : "Round " + x.round).join(", "))
-              : "Done — nothing left"
-          }</span>
-        </div>`).join("")}
+      <h3 class="panel-h">Points for this game</h3>
+      <p class="panel-sub">Awarded on total wins, not per win. Whoever wins the most takes the top points, however many wins that was. Teams level on wins split the places they take up.</p>
+      <div class="pts-grid">
+        ${game.pts.map((v,i) => `
+          <label class="pts-cell"><span>${labels[i]}</span>
+            <input class="js-gpts" data-i="${i}" inputmode="decimal" value="${v}" aria-label="Points for ${labels[i]}">
+          </label>`).join("")}
+      </div>
     </div>
 
     <div class="panel">
-      <h3 class="panel-h">${esc(game.name)} wins</h3>
-      ${S.teams.map(t => `
-        <div class="wins-row">
-          <span class="wins-name">${esc(t.name)}</span>
-          ${tally(w[t.id])}
-          <span class="wins-num">${fmt(w[t.id]*wp)} pts</span>
-        </div>`).join("")}
+      <h3 class="panel-h">Standing in ${esc(game.name)}</h3>
+      <p class="panel-sub">${left === 0 ? "Final." : left + (left === 1 ? " match" : " matches") + " still to play."}</p>
+      ${S.teams.map(t => {
+        const owed = pending(game, t.id);
+        return `<div class="gstand">
+          <div class="gstand-top">
+            <span class="wins-name">${esc(t.name)}</span>
+            ${tally(w[t.id])}
+            <span class="wins-num">${w[t.id]}W</span>
+            <span class="gstand-pts">${started ? fmt(pp[t.id]) : "\u2013"}</span>
+          </div>
+          <div class="owed-list ${owed.length ? "" : "clear"}">${
+            owed.length
+              ? "Still to play: " + esc(owed.map(x => game.teams === 2
+                  ? teamName(x.teams.find(id => id !== t.id))
+                  : "match " + x.round).join(", "))
+              : "All matches played"
+          }</div>
+        </div>`;
+      }).join("")}
     </div>
 
     <div class="panel">
       <h3 class="panel-h">Add a game</h3>
-      <p class="panel-sub">New games start as one round with all five teams. Change the format after adding it.</p>
+      <p class="panel-sub">New games start as one match with all five teams. Change the format after adding it.</p>
       <div class="add-row">
-        <input class="text-input" id="newGame" placeholder="Cornhole, ladder golf, dizzy bat…">
+        <input class="text-input" id="newGame" placeholder="Cornhole, ladder golf, dizzy bat\u2026">
         <button class="solid" id="addGame">Add</button>
       </div>
     </div>
   </div>`;
-}
-
-/* Best case for one team in this game: win every match it is scheduled for. */
-function maxFor(game){
-  const wp = game.winPts != null ? game.winPts : 4;
-  let best = 0;
-  IDS.forEach(id => {
-    let n = 0;
-    scheduleFor(game).forEach(r => r.matches.forEach(m => { if (m.teams.indexOf(id) > -1) n++; }));
-    if (n > best) best = n;
-  });
-  return best * wp;
 }
 
 function poolNames(){
@@ -1159,6 +1239,15 @@ function poolMsg(text){
 }
 
 function wire(){
+  const gre = document.querySelector(".js-goredit");
+  if (gre) gre.onclick = () => { editGolfRules = !editGolfRules; render(); };
+  const gra = document.querySelector(".js-gorules");
+  if (gra){
+    gra.oninput = e => { S.golfRules = e.target.value; touch("golfRules"); };
+    gra.focus();
+    gra.setSelectionRange(gra.value.length, gra.value.length);
+  }
+
   document.querySelectorAll(".js-score").forEach(el => el.oninput = e => {
     const v = e.target.value.replace(/[^0-9.]/g,"");
     if (v !== e.target.value) e.target.value = v;
@@ -1175,7 +1264,7 @@ function wire(){
     document.querySelectorAll("[data-pts]").forEach(s => s.textContent = fmt(g[s.dataset.pts]) + " pts");
     touch(fld);
   });
-  document.querySelectorAll(".js-gtab").forEach(el => el.onclick = () => { activeGame = el.dataset.id; render(); });
+  document.querySelectorAll(".js-gtab").forEach(el => el.onclick = () => { activeGame = el.dataset.id; editRules = false; render(); });
   document.querySelectorAll(".js-win").forEach(el => el.onclick = () => {
     const g = S.games.find(x => x.id === activeGame);
     if (g.results[el.dataset.k] === el.dataset.t) delete g.results[el.dataset.k];
@@ -1189,20 +1278,26 @@ function wire(){
     g.teams = n; g.results = {};                 // schedule changed, results no longer map
     touch("g."+g.id+".fmt", "g."+g.id+".wipe"); render();
   });
-  const fr = document.querySelector(".js-frounds");
-  if (fr) fr.onchange = e => {
-    const g = g0();
-    const n = Math.min(12, Math.max(1, parseInt(e.target.value,10) || 1));
-    g.rounds = n; e.target.value = n;
+  document.querySelectorAll(".js-fcyc").forEach(el => el.onclick = () => {
+    const g = g0(); const n = +el.dataset.n;
+    if (g.cycles === n) return;
+    g.cycles = n;
     touch("g."+g.id+".fmt"); render();
-  };
-  const fp = document.querySelector(".js-fpts");
-  if (fp) fp.onchange = e => {
+  });
+  document.querySelectorAll(".js-gpts").forEach(el => el.oninput = e => {
     const g = g0();
-    const v = parseFloat(e.target.value);
-    g.winPts = isNaN(v) || v < 0 ? 0 : v; e.target.value = g.winPts;
-    touch("g."+g.id+".pts"); render();
-  };
+    g.pts[+e.target.dataset.i] = parseFloat(e.target.value) || 0;
+    touch("g."+g.id+".pts");
+  });
+
+  const re = document.querySelector(".js-redit");
+  if (re) re.onclick = () => { editRules = !editRules; render(); };
+  const ra = document.querySelector(".js-rules");
+  if (ra){
+    ra.oninput = e => { g0().rules = e.target.value; touch("g."+activeGame+".rules"); };
+    ra.focus();
+    ra.setSelectionRange(ra.value.length, ra.value.length);
+  }
 
   const gn = document.querySelector(".js-gname");
   if (gn) gn.oninput = e => {
@@ -1231,7 +1326,7 @@ function wire(){
     const inp = document.getElementById("newGame");
     const name = inp.value.trim(); if (!name) { inp.focus(); return; }
     const id = "g" + Date.now();
-    S.games.push({id, name, del:false, teams:5, rounds:1, winPts:4, results:{}});
+    S.games.push({id, name, del:false, teams:5, cycles:1, pts:[4,3,2,1,0], rules:"", results:{}});
     activeGame = id; touch("g." + id + ".del", "g." + id + ".name"); render();
   };
   const ng = document.getElementById("newGame");
@@ -1290,7 +1385,7 @@ function wire(){
     S = blank();
     S.V = keep;
     activeGame = liveGames()[0].id;
-    const flds = ["title","pool"];
+    const flds = ["title","pool","golfRules"];
     IDS.forEach(id => flds.push("golf."+id));
     S.golfPoints.forEach((_,i) => flds.push("gp."+i));
     S.teams.forEach((t,i) => { flds.push("t."+i+".name"); t.players.forEach((_,j)=>flds.push("t."+i+".p."+j)); });
