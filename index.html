@@ -452,8 +452,7 @@ function pairPlayers(pid){
 }
 
 /* Seed order for a half: which team sits in each of the five slots.
-   Slots 3 and 4 are the play-in, so whoever lands there plays an extra
-   match. A draw spreads that duty across four different teams. */
+   Slot 0 is the only bye in the half — everyone else plays round one. */
 function halfSeeds(game, h){
   const raw = toArr(h === "A" ? game.drawA : game.drawB) || [];
   const arr = raw.map(Number).filter(n => n >= 0 && n < 5);
@@ -461,21 +460,19 @@ function halfSeeds(game, h){
   return uniq.length === 5 ? uniq : [0,1,2,3,4];
 }
 
-/* Build both halves so that four different teams each take one play-in and
-   the fifth sits out of play-in duty entirely — the best 5 teams allows. */
+/* Exactly two byes in the whole bracket, one per half, and they always go to
+   two different teams — so no team ever has both of its pairs sitting out. */
 function drawFrom(order){
-  const free = order[0];
-  const o = order.slice(1);
+  const a = order[0], b = order[1];
   return {
-    A: [free, o[2], o[3], o[0], o[1]],
-    B: [free, o[0], o[1], o[2], o[3]]
+    A: [a].concat(order.filter(x => x !== a)),
+    B: [b].concat(order.filter(x => x !== b))
   };
 }
 
-/* Default rotates the free pass by how many bracket games already exist. */
+/* Default rotates which teams get the byes from one bracket game to the next. */
 function defaultDraw(n){
-  const order = [0,1,2,3,4].map(i => (i + n) % 5);
-  return drawFrom(order);
+  return drawFrom([0,1,2,3,4].map(i => (i + n) % 5));
 }
 
 function randomDraw(){
@@ -487,12 +484,9 @@ function randomDraw(){
   return drawFrom(order);
 }
 
-/* Pairs that must play the extra opening match. */
-function playInPairs(game){
-  return ["A","B"].reduce((acc,h) => {
-    const seeds = halfSeeds(game, h);
-    return acc.concat([pairId(seeds[3], h), pairId(seeds[4], h)]);
-  }, []);
+/* The two pairs sitting out round one. */
+function byePairs(game){
+  return ["A","B"].map(h => pairId(halfSeeds(game, h)[0], h));
 }
 
 function halfMatches(h, mode, game){
@@ -500,25 +494,25 @@ function halfMatches(h, mode, game){
   const s = i => ({s: pairId(seeds[i], h)});
   const k = n => h + "-" + n;
   const wb = [
-    {key:k("P"),  group:"Play-in",   label:"Play-in",       a:s(3),           b:s(4)},
-    {key:k("S1"), group:"Quarters",  label:"Quarter-final", a:s(0),           b:{w:k("P")}},
-    {key:k("S2"), group:"Quarters",  label:"Quarter-final", a:s(1),           b:s(2)},
-    {key:k("WF"), group:"Half final",label:"Half final",    a:{w:k("S1")},    b:{w:k("S2")}}
+    {key:k("Q1"), group:"r1", label:"Round one",  a:s(1),        b:s(2)},
+    {key:k("Q2"), group:"r1", label:"Round one",  a:s(3),        b:s(4)},
+    {key:k("R2"), group:"r2", label:"Round two",  a:s(0),        b:{w:k("Q1")}},
+    {key:k("HF"), group:"hf", label:"Half final", a:{w:k("R2")}, b:{w:k("Q2")}}
   ];
   if (mode === "se") return wb;
   return wb.concat([
-    {key:k("L1"), group:"Second chance", label:"Second chance", a:{l:k("S1")}, b:{l:k("S2")}},
-    {key:k("L2"), group:"Second chance", label:"Second chance", a:{w:k("L1")}, b:{l:k("P")}},
-    {key:k("L3"), group:"Second chance", label:"Second chance", a:{w:k("L2")}, b:{l:k("WF")}},
-    {key:k("HF"), group:"Half decider",  label:"Half decider",  a:{w:k("WF")}, b:{w:k("L3")}}
+    {key:k("L1"),  group:"lb", label:"Second chance", a:{l:k("Q1")}, b:{l:k("Q2")}},
+    {key:k("L2"),  group:"lb", label:"Second chance", a:{w:k("L1")}, b:{l:k("R2")}},
+    {key:k("L3"),  group:"lb", label:"Second chance", a:{w:k("L2")}, b:{l:k("HF")}},
+    {key:k("DEC"), group:"de", label:"Half decider",  a:{w:k("HF")}, b:{w:k("L3")}}
   ]);
 }
 
 function bracketDef(game){
   const mode = game.mode === "de" ? "de" : "se";
   const matches = halfMatches("A", mode, game).concat(halfMatches("B", mode, game));
-  const topA = mode === "se" ? "A-WF" : "A-HF";
-  const topB = mode === "se" ? "B-WF" : "B-HF";
+  const topA = mode === "se" ? "A-HF" : "A-DEC";
+  const topB = mode === "se" ? "B-HF" : "B-DEC";
   matches.push({key:"F", group:"Grand final", label:"Grand final", a:{w:topA}, b:{w:topB}});
   return {mode, matches, topA, topB};
 }
@@ -550,11 +544,11 @@ function bracketPlaces(game){
   put(W("F"), 1);
   put(L("F"), 2);
   if (mode === "se"){
-    ["A-WF","B-WF"].forEach(k => put(L(k), 3.5));
-    ["A-S1","A-S2","B-S1","B-S2"].forEach(k => put(L(k), 6.5));
-    ["A-P","B-P"].forEach(k => put(L(k), 9.5));
-  } else {
     ["A-HF","B-HF"].forEach(k => put(L(k), 3.5));
+    ["A-R2","B-R2"].forEach(k => put(L(k), 5.5));
+    ["A-Q1","A-Q2","B-Q1","B-Q2"].forEach(k => put(L(k), 8.5));
+  } else {
+    ["A-DEC","B-DEC"].forEach(k => put(L(k), 3.5));
     ["A-L3","B-L3"].forEach(k => put(L(k), 5.5));
     ["A-L2","B-L2"].forEach(k => put(L(k), 7.5));
     ["A-L1","B-L1"].forEach(k => put(L(k), 9.5));
@@ -590,7 +584,7 @@ function gamePointsFor(game){
 
 function blank(){
   return {
-    title: "The Scramble & Sauce Classic",
+    title: "Sauced and Scrambled",
     teams: IDS.map((id,i)=>({id, name:"Team "+(i+1), players:["","","",""]})),
     golfScores: {t1:"",t2:"",t3:"",t4:"",t5:""},
     golfPoints: [4,3,2,1,0],
@@ -1339,10 +1333,10 @@ function bracketBody(game){
   };
 
   const half = (h, name) => mode === "se"
-    ? section(name, [h+"-P", h+"-S1", h+"-S2", h+"-WF"])
-    : section(name + " &middot; main", [h+"-P", h+"-S1", h+"-S2", h+"-WF"]) +
+    ? section(name, [h+"-Q1", h+"-Q2", h+"-R2", h+"-HF"])
+    : section(name + " &middot; main", [h+"-Q1", h+"-Q2", h+"-R2", h+"-HF"]) +
       section(name + " &middot; second chance", [h+"-L1", h+"-L2", h+"-L3"]) +
-      section(name + " &middot; decider", [h+"-HF"]);
+      section(name + " &middot; decider", [h+"-DEC"]);
 
   return `
     <div class="panel">
@@ -1356,17 +1350,17 @@ function bracketBody(game){
 
     <div class="panel">
       <h3 class="panel-h">The draw</h3>
-      <p class="panel-sub">Five pairs a half means two of them play an extra opening match. The draw spreads that across four different teams, so nobody carries it twice — one team gets a clean run and that rotates between games.</p>
+      <p class="panel-sub">Odd numbers mean two byes — one per half. They always land on two different teams, so no team ever sits out twice. Which teams get them rotates between bracket games.</p>
       <div class="draw-row">
-        <span class="draw-label">Extra match</span>
-        <span class="draw-val">${playInPairs(game).map(p => esc(pairLabel(p))).join(", ")}</span>
+        <span class="draw-label">Byes</span>
+        <span class="draw-val">${byePairs(game).map(p => esc(pairLabel(p))).join(", ")}</span>
       </div>
       <div class="draw-row">
-        <span class="draw-label">Clean run</span>
+        <span class="draw-label">Round one</span>
         <span class="draw-val">${(() => {
-          const inPlay = playInPairs(game).map(pairTeamId);
-          const free = S.teams.filter(t => inPlay.indexOf(t.id) < 0).map(t => t.name);
-          return free.length ? esc(free.join(", ")) : "\u2014";
+          const byes = byePairs(game);
+          const n = 10 - byes.length;
+          return "the other " + n + " pairs all play";
         })()}</span>
       </div>
       <div class="pool-bar">

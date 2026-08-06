@@ -1,6 +1,6 @@
 /* Caches the app shell so it opens instantly and survives a dead signal.
    Scores always come from the network — they are never cached. */
-const CACHE = "tournament-shell-v14";
+const CACHE = "tournament-shell-v15";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest",
                "./icons/icon-192.png", "./icons/icon-512.png"];
 
