@@ -60,6 +60,16 @@ It opens full screen with no browser bars. Each device remembers its board, so
 the app rejoins your tournament on launch. If it ever asks which board to use,
 paste the code — nothing is lost.
 
+## Running more than one tournament
+
+**Switch board** at the top leaves the current board without changing it and
+takes you back to the keyword screen. From there you can type another keyword,
+tap one your phone remembers, or create a new board for a different event.
+
+Boards are independent and permanent — creating `fall-scramble` doesn't touch
+`arvada2026`. Removing one from the remembered list only clears your phone's
+shortcut; the board itself stays put and the keyword still opens it.
+
 ## Day of
 
 - **Teams** — paste the 20 names, hit Draw teams.
@@ -71,6 +81,15 @@ paste the code — nothing is lost.
   with everyone in it.
 - **Rules** sit at the top of the Golf tab and of each game. Tap **Add rules**, type them, tap
   **Done**. Everyone sees them on their own phone, so captains stop asking.
+- **Bracket games.** On the Format panel choose **Single** or **Double** instead
+  of Rounds. Every team splits into two pairs (players 1-2 and 3-4 from the
+  Teams tab). A pairs go in the top half, B pairs in the bottom, so a team's own
+  two pairs can only meet in the grand final. Single elimination is 9 matches,
+  double is 17.
+- **Bracket scoring** adds the two pairs' finishing places together — lowest
+  total takes the top points. 1st and 2nd is a combined 3 and wins the game;
+  1st and a first-round exit lands you mid-table. Points land when the grand
+  final is played.
 - **Game points** are awarded on total wins, not per win — most wins takes the
   top of the ladder however many wins that was. Editable per game, default
   4/3/2/1/0. Teams level on wins split the places they take up.
