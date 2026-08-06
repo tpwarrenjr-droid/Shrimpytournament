@@ -86,6 +86,10 @@ shortcut; the board itself stays put and the keyword still opens it.
   Teams tab). A pairs go in the top half, B pairs in the bottom, so a team's own
   two pairs can only meet in the grand final. Single elimination is 9 matches,
   double is 17.
+- **The draw.** Five pairs a half means two play an extra opening match. The
+  draw spreads that over four different teams so nobody carries it twice, and
+  which team gets the clean run rotates between bracket games. **Redraw at
+  random** on the Games tab reshuffles it (and clears that game's results).
 - **Bracket scoring** adds the two pairs' finishing places together — lowest
   total takes the top points. 1st and 2nd is a combined 3 and wins the game;
   1st and a first-round exit lands you mid-table. Points land when the grand
